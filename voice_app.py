@@ -34,7 +34,7 @@ button.secondary{margin-top:10px;background:#18231d;color:#d6e0da;border:1px sol
 </style>
 </head>
 <body><div class="wrap">
-<div class="top"><div class="brand"><span class="m">МУЖСКОЕ</span> <span class="slash">/</span> <span class="w">ЖЕНСКОЕ</span></div><b class="accent">VOICE METER</b></div>
+<div class="top"><div class="brand"><span class="m">VOICE METER</span></div><b class="accent">VOICE METER</b></div>
 <div class="panel">
 <h1>ТЕСТ АУДИОВХОДА</h1>
 <div class="sub">Сначала проверяем, что браузер видит нужную звуковую карту и корректно измеряет уровень микрофона.</div>
@@ -129,7 +129,13 @@ navigator.mediaDevices?.addEventListener?.('devicechange',enumerate);
 if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
   status.textContent='Этот браузер не поддерживает доступ к микрофону.'; status.className='status warn';
 }else enumerate();
-</script></body></html>
+</script><div class="panel" style="margin-top:18px">
+<div class="label" style="margin-bottom:12px">СТРАНИЦЫ КОНКУРСА</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+<a href="/men/voice/setup" style="text-decoration:none"><button type="button">SETUP</button></a>
+<a href="/men/voice/control" target="_blank" rel="noopener" style="text-decoration:none"><button type="button">УПРАВЛЕНИЕ</button></a>
+<a href="/men/voice/screen" target="_blank" rel="noopener" style="text-decoration:none"><button type="button">ГОСТЕВОЙ ЭКРАН</button></a>
+</div></div></body></html>
 """
 
 
@@ -162,7 +168,7 @@ body{margin:0;background:#020b07;color:#f4f5ef;font-family:Arial,sans-serif}.wra
 .retryActions{margin-top:28px;padding-top:18px;border-top:1px solid #294238;display:flex;flex-direction:column;gap:12px}
 .nextBtn{width:100%;background:#20ee78;color:#001b0d;border:0;border-radius:14px;padding:16px 22px;font-size:16px;font-weight:900;cursor:pointer}
 .retryBtn{width:100%;background:#18231d;color:#aab6b0;border:1px solid #405047;border-radius:14px;padding:13px 22px;font-size:14px;font-weight:800;cursor:pointer}
-</style></head><body><div class="wrap"><div class="top"><div class="brand"><span class="m">МУЖСКОЕ</span> <span class="a">/</span> <span class="w">ЖЕНСКОЕ</span></div><b class="a">VOICE METER</b></div>
+</style></head><body><div class="wrap"><div class="top"><div class="brand"><span class="m">VOICE METER</span></div></div>
 <div class="p"><div class="label">СТРАНИЦА ВЕДУЩЕГО</div><div class="row" style="margin-top:12px"><div><div class="label">КОЛИЧЕСТВО УЧАСТНИКОВ</div><input id="n" type="number" min="1" max="10" value="4"></div><button class="g" onclick="init()">НАЧАТЬ КОНКУРС</button><button class="r" onclick="post('/men/voice/api/reset')">СБРОСИТЬ</button><a class="d" href="/men/voice/screen" target="_blank">ГОСТЕВОЙ ЭКРАН</a></div></div><div class="p" id="game">ОЖИДАНИЕ</div></div>
 <script>
 function toDb(level){
@@ -198,7 +204,7 @@ SCREEN_HTML = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><met
 .count{display:block!important;font-size:260px!important;font-weight:900;line-height:1;color:#fff!important;margin:28px 0}
 .finalResult{font-size:190px;font-weight:900;line-height:1;margin:30px 0 12px}
 .finalResult .unit{font-size:44px}
-</style></head><body><div class="wrap"><div class="top"><div class="brand"><span class="m">МУЖСКОЕ</span> <span class="a">/</span> <span class="w">ЖЕНСКОЕ</span></div><b class="a">VOICE METER</b></div>
+</style></head><body><div class="wrap"><div class="top"><div class="brand"><span class="m">VOICE METER</span></div></div>
 <button id="audioStart" onclick="startScreenAudio()" style="position:absolute;top:90px;right:36px;background:#20ee78;color:#001b0d;border:0;border-radius:12px;padding:12px 18px;font-weight:900;cursor:pointer">ПОДКЛЮЧИТЬ VOICE METER</button><div class="main"><div class="info" id="info"></div><div class="meterbox"><div class="scale"><span>0</span><span>-10</span><span>-20</span><span>-30</span><span>-40</span><span>-50</span><span>-60</span></div><div class="meter"><div class="zones"></div><div class="fill" id="fill"></div><div class="peakline" id="peakline"></div></div></div></div><div class="results" id="results"></div></div>
 <script>
 let screenStream=null,screenCtx=null,screenAnalyser=null,screenData=null,screenPeak=0;
@@ -319,7 +325,7 @@ def api_reset():
 
 @app.get("/")
 def index():
-    return redirect("/setup")
+    return redirect("/men/voice/setup")
 
 @app.get("/setup")
 def setup():

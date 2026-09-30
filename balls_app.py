@@ -13,7 +13,9 @@ state = {
     "finished": False,
     "timer_started": False,
     "timer_started_at": None,
-    "timer_duration": 40,
+     "timer_duration": 40,
+    "countdown_duration": 5,
+    "countdown_started_at": None,
     "version": 0
 }
 
@@ -38,9 +40,9 @@ button{border:0;border-radius:14px;padding:15px 22px;font-size:16px;font-weight:
 .timer{font-size:42px;font-weight:950;color:#20ee78}.timer.danger{color:#fff}
 .timerStart{background:#20eb72;color:#001b0d;min-width:220px}.timerStart:disabled,.plus:disabled,.minus:disabled{opacity:.35;cursor:not-allowed}
 .timeup{font-size:28px;font-weight:950;color:#fff;letter-spacing:2px}
-.next{background:white;color:#07110c;width:100%;margin-top:12px}.screenlink{font-size:13px;color:#81938a;margin-top:15px}.screenlink a{color:#20ee78}
+.nextZone{margin-top:34px;padding-top:20px;border-top:1px solid #174b30;display:flex;justify-content:flex-end}.next{background:#18231d;color:#cbd5cf;border:1px solid #405047;width:auto;min-width:270px;margin:0;font-size:14px}.next:hover{background:#243129}.screenlink{font-size:13px;color:#81938a;margin-top:15px}.screenlink a{color:#20ee78}
 .game{display:none}.game.on{display:block}.label{color:#84968c;font-size:14px;font-weight:800;letter-spacing:1px}
-.current{font-size:34px;font-weight:900;margin-top:8px}.score{font-size:72px;color:#20ee78;font-weight:900}
+.current{font-size:34px;font-weight:900;margin-top:8px}.score{font-size:clamp(150px,18vw,310px);font-weight:950;line-height:.8;color:var(--green);text-align:right;text-shadow:0 0 34px rgba(0,230,118,.22);width:100%;min-width:0;max-width:100%;padding-right:34px;box-sizing:border-box;overflow:visible;justify-self:stretch}
 .controls{display:grid;grid-template-columns:1fr 135px;gap:12px}.plus{font-size:32px}.minus{font-size:26px}
 .doneTitle{color:#81938a;font-size:12px;font-weight:900;margin-top:15px}.doneRow{display:flex;justify-content:space-between;padding:10px 4px;border-bottom:1px solid #10281b}.doneRow b{color:#20ee78}
 .finishedMsg{font-size:34px;font-weight:900;color:#20ee78}
@@ -49,7 +51,7 @@ button{border:0;border-radius:14px;padding:15px 22px;font-size:16px;font-weight:
 </head>
 <body>
 <div class="wrap">
- <div class="top"><div class="brand"><span class="m">МУЖСКОЕ</span> <span class="slash">/</span> <span class="w">ЖЕНСКОЕ</span></div><b class="accent">ШАРИКИ · УПРАВЛЕНИЕ</b></div>
+ <div class="top"><div class="brand"><span class="m">ШАРИКИ</span></div><b class="accent">УПРАВЛЕНИЕ</b></div>
  <div class="panel">
    <div class="row">
     <div class="field"><label>Количество участников</label><input id="count" type="number" min="1" max="30" value="4"></div>
@@ -65,7 +67,7 @@ button{border:0;border-radius:14px;padding:15px 22px;font-size:16px;font-weight:
     <div class="timerBox"><div><div class="label">ВРЕМЯ</div><div class="timer" id="timer">40</div></div><button class="timerStart" id="timerStart" onclick="startTimer()">СТАРТ — 40 СЕКУНД</button></div>
     <div class="score" id="score">0</div>
     <div class="controls"><button class="plus" id="plusBtn" onclick="score(1)" disabled>+1 ШАРИК</button><button class="minus" id="minusBtn" onclick="score(-1)" disabled>−1</button></div>
-    <button class="next" onclick="nextPlayer()">СЛЕДУЮЩИЙ УЧАСТНИК →</button>
+    <div class="nextZone"><button class="next" onclick="nextPlayer()">СЛЕДУЮЩИЙ УЧАСТНИК →</button></div>
    </div>
    <div id="finishedBox" class="finishedMsg" style="display:none">КОНКУРС ЗАВЕРШЁН ✓</div>
    <div class="doneTitle">УЖЕ СЫГРАЛИ</div>
@@ -94,11 +96,13 @@ async function refresh(){
    document.getElementById('currentName').textContent=s.participants[s.current].name;
    document.getElementById('score').textContent=s.participants[s.current].score;
    const remaining=Math.max(0,Math.ceil(Number(s.remaining)));
+   const countdown=Math.max(0,Math.ceil(Number(s.countdown_remaining||0)));
+   const counting=!!s.countdown_running;
    const running=!!s.timer_started && remaining>0;
-   document.getElementById('timer').textContent=remaining;
+   document.getElementById('timer').textContent=counting?countdown:remaining;
    document.getElementById('timer').classList.toggle('danger',running && remaining<=5);
-   document.getElementById('timerStart').disabled=!!s.timer_started;
-   document.getElementById('timerStart').textContent=s.timer_started?(remaining>0?'ИДЁТ ВРЕМЯ':'ВРЕМЯ!'):'СТАРТ — 40 СЕКУНД';
+   document.getElementById('timerStart').disabled=!!s.timer_started||counting;
+   document.getElementById('timerStart').textContent=counting?'ОТСЧЁТ '+countdown:s.timer_started?(remaining>0?'ИДЁТ ВРЕМЯ':'ВРЕМЯ!'):'СТАРТ — 5 СЕК. + 40 СЕК.';
    document.getElementById('plusBtn').disabled=!running;
    document.getElementById('minusBtn').disabled=!running;
  }
@@ -125,10 +129,12 @@ body:before{content:"";position:fixed;inset:0;background:radial-gradient(circle 
 .top{display:flex;justify-content:space-between;align-items:center}.brand{font-size:28px;font-weight:900}
 .brand .m{border:2px solid #20ed76;padding:8px 12px}.brand .slash,.title{color:#20ed76}.brand .w{color:#747c78}
 .title{font-size:30px;font-weight:900;letter-spacing:6px}
-.main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 280px;align-items:center;gap:35px}
+.main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,32vw);align-items:center;gap:35px}
 .kicker{color:#87998f;font-weight:900;letter-spacing:5px;font-size:20px;margin-bottom:24px}
 .name{font-size:clamp(58px,7vw,118px);font-weight:950;line-height:.92;word-break:break-word}
 .score{font-size:clamp(150px,19vw,330px);font-weight:950;color:#20ed76;text-align:center;text-shadow:0 0 35px rgba(32,237,118,.25);transition:transform .16s ease}
+.countdown{font-size:clamp(150px,22vw,360px);font-weight:950;color:#20ed76;text-align:center;text-shadow:0 0 45px rgba(32,237,118,.35)}
+.countText{color:#87998f;font-weight:900;letter-spacing:6px;font-size:22px;text-align:center;margin-bottom:10px}
 .screenTimer{font-size:clamp(54px,6vw,100px);font-weight:950;color:#20ed76;margin-top:22px}.screenTimer.danger{font-size:clamp(80px,10vw,170px);color:#fff}.waiting{color:#87998f;font-size:24px;font-weight:900;margin-top:22px}.timeup{font-size:clamp(55px,7vw,115px);font-weight:950;color:#fff;margin-top:20px}
 .score.bump{transform:scale(1.12)}
 .results{min-height:130px;border-top:1px solid #123c27;padding-top:18px}
@@ -141,7 +147,7 @@ body:before{content:"";position:fixed;inset:0;background:radial-gradient(circle 
 </head>
 <body>
 <div class="wrap">
- <div class="top"><div class="brand"><span class="m">МУЖСКОЕ</span> <span class="slash">/</span> <span class="w">ЖЕНСКОЕ</span></div><div class="title">ШАРИКИ</div></div>
+ <div class="top"><div class="brand"><span class="m">ШАРИКИ</span></div></div>
  <div class="main" id="main">
    <div><div class="kicker" id="kicker">СЕЙЧАС ИГРАЕТ</div><div class="name" id="name">ОЖИДАНИЕ</div></div>
    <div class="score" id="score">0</div>
@@ -181,16 +187,25 @@ async function refresh(){
     if(active){
       const p = s.participants[current];
       const remaining=Math.max(0,Math.ceil(Number(s.remaining)));
+      const countdown=Math.max(0,Math.ceil(Number(s.countdown_remaining||0)));
       const timerStarted=!!s.timer_started;
-      let timerHtml = !timerStarted
-        ? `<div class="waiting">ГОТОВЬТЕСЬ · 40 СЕКУНД</div>`
-        : remaining>0
-          ? `<div class="screenTimer ${remaining<=5?'danger':''}">${remaining}</div>`
-          : `<div class="timeup">ВРЕМЯ!</div>`;
-      main.innerHTML =
-        `<div><div class="kicker">СЕЙЧАС ИГРАЕТ</div>`+
-        `<div class="name">${escapeHtml(p.name)}</div>${timerHtml}</div>`+
-        `<div class="score" id="score">${Number(p.score)||0}</div>`;
+      const countdownRunning=!!s.countdown_running;
+      if(countdownRunning){
+        main.innerHTML =
+          `<div style="grid-column:1/-1;text-align:center">`+
+          `<div class="countText">ПРИГОТОВИЛИСЬ</div>`+
+          `<div class="countdown">${countdown}</div></div>`;
+      }else{
+        let timerHtml = !timerStarted
+          ? `<div class="waiting">ГОТОВЬТЕСЬ · 40 СЕКУНД</div>`
+          : remaining>0
+            ? `<div class="screenTimer ${remaining<=5?'danger':''}">${remaining}</div>`
+            : `<div class="timeup">ВРЕМЯ!</div>`;
+        main.innerHTML =
+          `<div><div class="kicker">СЕЙЧАС ИГРАЕТ</div>`+
+          `<div class="name">${escapeHtml(p.name)}</div>${timerHtml}</div>`+
+          `<div class="score" id="score">${Number(p.score)||0}</div>`;
+      }
 
       const scoreEl = document.getElementById('score');
       if(lastScore !== null && Number(p.score) !== lastScore){
@@ -205,7 +220,7 @@ async function refresh(){
       lastScore = null;
     }else{
       main.innerHTML =
-        `<div><div class="kicker">ШАРИКИ</div>`+
+        `<div>`+
         `<div class="name">ОЖИДАНИЕ</div></div>`+
         `<div class="score" id="score">0</div>`;
       lastScore = null;
@@ -236,7 +251,7 @@ refresh();
 
 @app.after_request
 def no_cache(resp):
-    if request.path.startswith("/api/") or request.path == "/screen":
+    if request.path.startswith("/men/balls/api/") or request.path == "/men/balls/screen":
         resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         resp.headers["Pragma"] = "no-cache"
         resp.headers["Expires"] = "0"
@@ -250,14 +265,32 @@ def control():
 def screen():
     return render_template_string(SCREEN_HTML)
 
+def update_timer_locked():
+    if state["countdown_started_at"] is not None and not state["timer_started"]:
+        elapsed = time.time() - state["countdown_started_at"]
+        if elapsed >= state["countdown_duration"]:
+            state["timer_started"] = True
+            state["timer_started_at"] = state["countdown_started_at"] + state["countdown_duration"]
+            state["countdown_started_at"] = None
+            state["version"] += 1
+
+def countdown_remaining_locked():
+    if state["countdown_started_at"] is None:
+        return 0.0
+    return max(0.0, state["countdown_duration"] - (time.time() - state["countdown_started_at"]))
+
 def timer_remaining_locked():
+    update_timer_locked()
     if not state["timer_started"] or state["timer_started_at"] is None:
         return state["timer_duration"]
     return max(0.0, state["timer_duration"] - (time.time() - state["timer_started_at"]))
 
 def state_payload_locked():
+    update_timer_locked()
     payload = dict(state)
     payload["participants"] = [dict(p) for p in state["participants"]]
+    payload["countdown_remaining"] = countdown_remaining_locked()
+    payload["countdown_running"] = state["countdown_started_at"] is not None and not state["timer_started"]
     payload["remaining"] = timer_remaining_locked()
     return payload
 
@@ -279,6 +312,7 @@ def start():
         state["finished"]=False
         state["timer_started"]=False
         state["timer_started_at"]=None
+        state["countdown_started_at"]=None
         state["version"]+=1
         return jsonify(state_payload_locked())
 
@@ -286,9 +320,9 @@ def start():
 def start_timer():
     with lock:
         i=state["current"]
-        if not state["finished"] and 0<=i<len(state["participants"]) and not state["timer_started"]:
-            state["timer_started"]=True
-            state["timer_started_at"]=time.time()
+        if (not state["finished"] and 0<=i<len(state["participants"])
+                and not state["timer_started"] and state["countdown_started_at"] is None):
+            state["countdown_started_at"]=time.time()
             state["version"]+=1
         return jsonify(state_payload_locked())
 
@@ -314,11 +348,13 @@ def next_player():
             state["current"]+=1
             state["timer_started"]=False
             state["timer_started_at"]=None
+            state["countdown_started_at"]=None
         else:
             state["finished"]=True
             state["current"]=len(state["participants"])
             state["timer_started"]=False
             state["timer_started_at"]=None
+        state["countdown_started_at"]=None
         state["version"]+=1
         return jsonify(state_payload_locked())
 
@@ -331,6 +367,7 @@ def reset():
         state["finished"]=False
         state["timer_started"]=False
         state["timer_started_at"]=None
+        state["countdown_started_at"]=None
         state["version"]+=1
         return jsonify(state_payload_locked())
 

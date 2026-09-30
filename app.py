@@ -1,9 +1,12 @@
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.serving import run_simple
 from balls_app import app as balls_app
 from hamster_app import app as hamster_app
 from voice_app import app as voice_app
+import io, base64
+import qrcode
+
 
 app=Flask(__name__)
 
@@ -18,6 +21,9 @@ h1{font-size:52px;margin:0 0 42px}.section{margin:42px 0}.title{font-size:22px;f
 .menu{max-width:760px;margin:70px auto}.back{color:#8ca096;text-decoration:none;font-weight:900}.contest{font-size:58px;margin:35px 0 10px}.hint{color:#81958b;margin-bottom:35px}
 .menuGrid{display:grid;gap:14px}.action{display:flex;align-items:center;justify-content:space-between;padding:23px 25px;border-radius:17px;border:1px solid #20543a;background:#07170f;color:#fff;text-decoration:none;font-size:21px;font-weight:900}
 .action:hover{border-color:#20ee78}.action span{color:#20ee78}.action.setup{background:#101713;border-color:#3c4b43}.small{font-size:13px;color:#82968c;margin-top:5px;font-weight:normal}
+.qrbox{margin-top:24px;padding:22px;border:1px solid #20543a;border-radius:17px;background:#07170f;display:flex;align-items:center;gap:22px}
+.qrbox img{width:150px;height:150px;background:#fff;padding:8px;border-radius:12px}.qrtitle{font-size:19px;font-weight:900}.qrhint{font-size:13px;color:#82968c;margin-top:7px;line-height:1.4}
+@media(max-width:520px){.qrbox{flex-direction:column;text-align:center}}
 @media(max-width:800px){.grid{grid-template-columns:1fr}.card{height:120px}h1{font-size:39px}.contest{font-size:45px}}
 """
 HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Мужское / Женское</title><style>{{css}}</style></head><body><div class="wrap">
@@ -35,28 +41,40 @@ HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 MENU="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{{name}}</title><style>{{css}}</style></head><body><div class="wrap"><div class="menu">
 <a class="back" href="/">← НАЗАД К КОНКУРСАМ</a><div class="contest">{{name}}</div><div class="hint">Выберите нужный режим.</div><div class="menuGrid">
 {% for a in actions %}<a class="action {{a.get('class','')}}" href="{{a.url}}" {% if a.get('new') %}target="_blank"{% endif %}><div>{{a.title}}{% if a.get('desc') %}<div class="small">{{a.desc}}</div>{% endif %}</div><span>→</span></a>{% endfor %}
-</div></div></div></body></html>"""
+</div>
+<div class="qrbox"><img src="{{qr}}" alt="QR для ведущего"><div><div class="qrtitle">QR ДЛЯ ВЕДУЩЕГО</div><div class="qrhint">Отсканируйте телефоном, чтобы открыть страницу управления конкурсом.</div></div></div>
+</div></div></body></html>"""
+
+
+def qr_data(url):
+    img=qrcode.make(url)
+    buf=io.BytesIO()
+    img.save(buf,format="PNG")
+    return "data:image/png;base64,"+base64.b64encode(buf.getvalue()).decode("ascii")
+
+def absolute(path):
+    return request.url_root.rstrip("/") + path
 
 @app.get("/")
 def home(): return render_template_string(HOME,css=CSS)
 
 @app.get("/contest/balls")
 def balls_menu():
-    return render_template_string(MENU,css=CSS,name="ШАРИКИ",actions=[
+    return render_template_string(MENU,css=CSS,name="ШАРИКИ",qr=qr_data(absolute("/men/balls/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/men/balls/","desc":"Управление участниками, таймером и результатами"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/men/balls/screen","desc":"Экран для проектора","new":True},
     ])
 
 @app.get("/contest/hamster")
 def hamster_menu():
-    return render_template_string(MENU,css=CSS,name="ХОМЯК",actions=[
+    return render_template_string(MENU,css=CSS,name="ХОМЯК",qr=qr_data(absolute("/men/hamster/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/men/hamster/","desc":"Управление конкурсом"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/men/hamster/screen","desc":"Игровой экран для участника / проектора","new":True},
     ])
 
 @app.get("/contest/voice")
 def voice_menu():
-    return render_template_string(MENU,css=CSS,name="VOICE METER",actions=[
+    return render_template_string(MENU,css=CSS,name="VOICE METER",qr=qr_data(absolute("/men/voice/control")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/men/voice/control","desc":"Участники, старт и результаты"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/men/voice/screen","desc":"Вертикальный индикатор и результат в dB","new":True},
         {"title":"НАСТРОЙКА АУДИОВХОДА","url":"/men/voice/setup","desc":"Выбор микрофона / звуковой карты","class":"setup","new":True},
