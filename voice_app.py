@@ -21,13 +21,13 @@ from flask import Flask, redirect, render_template_string, request
 from flask_socketio import SocketIO, emit
 
 PREP_SECONDS = int(os.environ.get("PREP_SECONDS", 5))
-ROUND_SECONDS = int(os.environ.get("ROUND_SECONDS", 10))
+ROUND_SECONDS = int(os.environ.get("ROUND_SECONDS", 5))   # сколько секунд кричит каждый участник
 MAX_PARTICIPANTS = 30
 LIVE_INTERVAL = 0.04      # не чаще 25 раз в секунду рассылаем живой уровень
-ROUND_MIN, ROUND_MAX = 3, 60
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+# Короткий пинг: оборванное соединение (уснул телефон, сменилась сеть) замечается за секунды, а не за минуту.
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", ping_interval=10, ping_timeout=15)
 lock = Lock()
 
 state = {
@@ -167,14 +167,9 @@ def on_setup(data=None):
         count = 4
     count = max(1, min(MAX_PARTICIPANTS, count))
     with lock:
-        try:
-            rnd = int(data.get("round", state["round"]))
-        except (TypeError, ValueError):
-            rnd = state["round"]
-        state["round"] = max(ROUND_MIN, min(ROUND_MAX, rnd))
         state.update(
             participants=[{"name": f"Участник {i + 1}", "score": 0.0, "done": False} for i in range(count)],
-            current=0, finished=False, started_at=None,
+            current=0, finished=False, started_at=None, round=ROUND_SECONDS,
         )
         state["bump"] += 1
         broadcast_locked()
@@ -254,7 +249,8 @@ def no_cache(resp):
 
 def page(template):
     return render_template_string(
-        template, base=base_path(), theme_css=THEME_CSS, client_js=CLIENT_JS, audio_js=AUDIO_JS, bg_js=BG_JS)
+        template, base=base_path(), round=ROUND_SECONDS,
+        theme_css=THEME_CSS, client_js=CLIENT_JS, audio_js=AUDIO_JS, bg_js=BG_JS)
 
 
 @app.get("/")
@@ -630,15 +626,21 @@ h2{margin:0 0 14px;font-size:17px;font-weight:600;color:var(--mist)}
 .stepper{display:grid;grid-template-columns:72px 1fr 72px;align-items:center;gap:10px;margin-bottom:16px}
 .stepper button{height:72px;border-radius:var(--r-m);border:1px solid var(--line);background:var(--ink-2);font-size:30px;font-weight:600}
 .stepper .num{text-align:center;font-size:52px;}
-.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px}
-.chip{border:1px solid var(--line);background:var(--ink-2);border-radius:var(--r-m);padding:12px 0;font-weight:800;font-size:17px}
-.chip.on{background:var(--signal);border-color:var(--signal);color:var(--signal-ink)}
 .lbl{color:var(--mist);font-weight:600;font-size:14px;margin:0 0 8px}
 .btn{display:block;width:100%;border:0;border-radius:var(--r-m);padding:18px;font-size:19px;font-weight:800}
 .btn.primary{background:var(--signal);color:var(--signal-ink)}
 .btn.quiet{background:transparent;border:1px solid var(--line);color:var(--chalk);font-weight:600}
 .btn.danger{background:transparent;border:1px solid var(--danger-bg);color:var(--danger);font-weight:600;font-size:15px;padding:14px}
 .btn:disabled{opacity:.4;cursor:default}
+.btn.armed{background:var(--warm);border-color:var(--warm);color:var(--signal-ink)}
+.btn.quiet.armed{color:var(--signal-ink)}
+.resetzone{margin-top:30px;padding-top:20px;border-top:1px dashed var(--line);text-align:center}
+.reset-open{background:none;border:0;color:var(--mist);opacity:.75;font-size:14px;font-weight:600;padding:10px 14px;text-decoration:underline;text-underline-offset:3px}
+.reset-ask{text-align:left}
+.reset-ask p{margin:0 0 14px;color:var(--chalk);line-height:1.4}
+.reset-ask p span{display:block;color:var(--mist);font-size:14px;margin-top:4px}
+.reset-ask .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.reset-ask .btn{padding:15px 8px;font-size:16px}
 .btn:active:not(:disabled){transform:scale(.98)}
 /* состояние микрофона */
 .mic{padding:14px 16px}
@@ -693,9 +695,8 @@ h2{margin:0 0 14px;font-size:17px;font-weight:600;color:var(--mist)}
   <section class="card" id="setup">
     <h2>Сколько участников</h2>
     <div class="stepper"><button id="minusCount" aria-label="Меньше">−</button><div class="num" id="count">4</div><button id="plusCount" aria-label="Больше">+</button></div>
-    <h2>Сколько секунд кричать</h2>
-    <div class="chips" id="chips"></div>
     <button class="btn primary" id="begin">Начать конкурс</button>
+    <p class="hint" style="margin:12px 0 0">Каждому участнику — {{ round }} секунд на крик</p>
   </section>
 
   <section class="card" id="game" hidden>
@@ -720,22 +721,62 @@ h2{margin:0 0 14px;font-size:17px;font-weight:600;color:var(--mist)}
 
   <div class="spacer"></div>
   <button class="namelink" id="namesToggle" hidden>Имена участников</button>
-  <button class="btn danger" id="reset" hidden>Сбросить конкурс</button>
+  <div class="resetzone" id="resetZone" hidden>
+    <button class="reset-open" id="resetOpen"></button>
+    <div class="reset-ask" id="resetAsk" hidden>
+      <p><b id="resetQ"></b><span id="resetSub"></span></p>
+      <div class="two"><button class="btn quiet" id="resetNo">Отмена</button><button class="btn danger" id="resetYes" disabled></button></div>
+    </div>
+  </div>
 </main>
 <script>{{ client_js|safe }}</script>
 <script>
 const $ = id => document.getElementById(id);
-let count = 4, roundSec = 10, lastKey = '', lvDisp = 0;
-const ROUNDS = [5, 10, 15, 20];
-$('chips').innerHTML = ROUNDS.map(n => `<button class="chip${n === roundSec ? ' on' : ''}" data-n="${n}">${n} с</button>`).join('');
-$('chips').addEventListener('click', e => {
-  const b = e.target.closest('.chip'); if (!b) return;
-  roundSec = +b.dataset.n;
-  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b));
-});
-$('minusCount').onclick = () => { count = Math.max(1, count - 1); $('count').textContent = count; };
-$('plusCount').onclick = () => { count = Math.min(30, count + 1); $('count').textContent = count; };
-$('begin').onclick = () => socket.emit('setup', {count, round: roundSec});
+let count = 4, lastKey = '', lvDisp = 0;
+function setText(el, v){ v = String(v); if (el._v !== v) { el._v = v; el.textContent = v; } }   // трогаем DOM только при изменении
+function setHtml(el, h){ if (el._h !== h) { el._h = h; el.innerHTML = h; } }
+
+/* ---------- связь ----------
+   Все команды уходят через send(): если связи нет, команда не копится в очереди
+   (иначе «Запустить время» выстрелит позже, когда никто не ждёт), а сверху видна красная полоса.
+   После каждой команды просим свежее состояние; если ответа нет — тихо переподключаемся. */
+let pendingAt = 0, lastState = performance.now();
+socket.on('state', () => { pendingAt = 0; lastState = performance.now(); });
+function reconnect(){
+  pendingAt = 0; lastState = performance.now();
+  offlineBar && offlineBar.classList.add('on');
+  try { socket.disconnect(); socket.connect(); } catch (e) {}
+}
+function send(name, data){
+  if (!socket.connected) { offlineBar && offlineBar.classList.add('on'); return false; }
+  socket.emit(name, data || {});
+  socket.emit('sync');
+  if (!pendingAt) pendingAt = performance.now();
+  return true;
+}
+setInterval(() => {
+  const now = performance.now();
+  if (pendingAt && now - pendingAt > 3500) return reconnect();     // команда ушла, а ответа нет
+  if (document.hidden) return;
+  if (socket.connected) socket.emit('sync');                          // живой пульс: страница никогда не «застывает» молча
+  if (now - lastState > 12000) reconnect();
+}, 2000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !socket.connected) { try { socket.connect(); } catch (e) {} } });
+
+/* ---------- подтверждения без системных окон ----------
+   Системные confirm() телефоны и встроенные браузеры могут молча блокировать — тогда кнопка «не реагирует».
+   Вместо них кнопка меняет подпись и ждёт второго нажатия. */
+function disarm(btn){ if (!btn || !btn._armed) return; btn._armed = false; clearTimeout(btn._armT); btn.textContent = btn._orig; btn.classList.remove('armed'); }
+function arm(btn, askText, run){
+  if (btn._armed) { disarm(btn); run(); return; }
+  btn._armed = true; btn._orig = btn.textContent; btn.textContent = askText; btn.classList.add('armed');
+  btn._armT = setTimeout(() => disarm(btn), 4000);
+}
+
+$('minusCount').onclick = () => { count = Math.max(1, count - 1); setText($('count'), count); };
+$('plusCount').onclick = () => { count = Math.min(30, count + 1); setText($('count'), count); };
+$('begin').onclick = () => send('setup', {count});
+
 let namesOpen = false, namesKey = '';
 $('namesToggle').onclick = () => { namesOpen = !namesOpen; namesKey = ''; $('names').hidden = !namesOpen; $('namesToggle').textContent = namesOpen ? 'Скрыть имена' : 'Имена участников'; if (namesOpen) $('names').scrollIntoView({behavior: 'smooth', block: 'start'}); };
 function renderNames(){
@@ -748,16 +789,25 @@ function renderNames(){
   }
   box.querySelectorAll('input').forEach(inp => {
     if (document.activeElement === inp) return;
-    const p = S.participants[+inp.dataset.i]; const v = /^Участник \d+$/.test(p.name) ? '' : p.name;
+    const p = S.participants[+inp.dataset.i]; if (!p) return;
+    const v = /^Участник \d+$/.test(p.name) ? '' : p.name;
     if (inp.value !== v) inp.value = v;
   });
 }
-$('nameFields').addEventListener('change', e => { const inp = e.target.closest('input'); if (inp) socket.emit('rename', {index: +inp.dataset.i, name: inp.value}); });
+$('nameFields').addEventListener('change', e => { const inp = e.target.closest('input'); if (inp) send('rename', {index: +inp.dataset.i, name: inp.value}); });
 $('nameFields').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
-$('reset').onclick = () => { if (confirm('Сбросить конкурс? Все результаты удалятся.')) socket.emit('reset'); };
 
-function act(name, data){ socket.emit(name, data || {}); }
-function micFresh(){ return !!(S && S.mic.on) && performance.now() - LIVE.at < 1500; }
+/* ---------- сброс игры: внизу, в два шага ---------- */
+let resetT = 0, resetUnlockT = 0;
+function closeReset(){ clearTimeout(resetT); clearTimeout(resetUnlockT); $('resetAsk').hidden = true; $('resetOpen').hidden = false; $('resetYes').disabled = true; }
+$('resetOpen').onclick = () => {
+  $('resetOpen').hidden = true; $('resetAsk').hidden = false; $('resetYes').disabled = true;
+  resetUnlockT = setTimeout(() => { $('resetYes').disabled = false; }, 700);   // защита от случайного двойного нажатия
+  resetT = setTimeout(closeReset, 10000);
+  $('resetAsk').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+};
+$('resetNo').onclick = closeReset;
+$('resetYes').onclick = () => { if ($('resetYes').disabled) return; closeReset(); send('reset'); };
 
 function renderActions(ph, isLast){
   // Перерисовываем кнопки только при смене фазы, чтобы нажатие не «съедалось»
@@ -777,11 +827,13 @@ function renderActions(ph, isLast){
       <button class="btn quiet" data-act="replay">Переиграть раунд</button></div>`;
   } else a.innerHTML = '';
 }
+function micFresh(){ return !!(S && S.mic.on) && performance.now() - LIVE.at < 1500; }
 $('actions').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
-  if (b.dataset.act === 'start_timer' && !micFresh() && !confirm('Нет сигнала с микрофона. Всё равно запустить время?')) return;
-  if (b.dataset.act === 'replay' && !confirm('Обнулить результат и переиграть раунд?')) return;
-  if (b.dataset.act) act(b.dataset.act);
+  const act = b.dataset.act;
+  if (act === 'start_timer' && !micFresh()) return arm(b, 'Нет звука с микрофона. Запустить всё равно?', () => send('start_timer'));
+  if (act === 'replay') return arm(b, 'Обнулить результат? Нажмите ещё раз', () => send('replay'));
+  if (act) send(act);
 });
 
 function renderMic(){
@@ -790,44 +842,51 @@ function renderMic(){
   if (!S || !S.mic.on) { title = 'Микрофон не подключён'; sub = 'Откройте «Экран для гостей» на компьютере с микрофоном'; }
   else if (!micFresh()) { cls = 'warn'; title = 'Нет сигнала с микрофона'; sub = 'Экран подключён, но звук не приходит. Проверьте вход в Setup'; }
   else { cls = 'ok'; title = 'Микрофон работает'; sub = S.mic.label || 'вход по умолчанию'; }
-  box.className = 'card mic ' + cls;
-  $('micTitle').textContent = title; $('micSub').textContent = sub;
+  const c = 'card mic ' + cls;
+  if (box.className !== c) box.className = c;
+  setText($('micTitle'), title); setText($('micSub'), sub);
   lvDisp = micFresh() ? Math.max(LIVE.level, lvDisp - 2.5) : Math.max(0, lvDisp - 4);
-  $('lvNum').textContent = Math.round(lvDisp);
+  setText($('lvNum'), Math.round(lvDisp));
   $('lvBar').style.clipPath = `inset(0 ${100 - lvDisp}% 0 0)`;
 }
 
-function tick(){
+function frame(){
   renderMic();
-  if (S) {
-    const ph = phaseOf(S), p = S.participants[S.current];
-    $('setup').hidden = ph !== 'idle';
-    $('game').hidden = !(p && !S.finished);
-    $('final').hidden = ph !== 'finished';
-    $('reset').hidden = ph === 'idle';
-    $('namesToggle').hidden = ph === 'idle';
-    if (ph === 'idle') { namesOpen = false; $('names').hidden = true; $('namesToggle').textContent = 'Имена участников'; }
-    renderNames();
-    if (p && !S.finished) {
-      const isLast = S.current === S.participants.length - 1;
-      $('name').textContent = p.name;
-      $('of').textContent = (S.current + 1) + ' из ' + S.participants.length;
-      setRoll($('score'), fmt1(p.score));
-      const st = $('status'), r = remaining(S);
-      st.className = 'status' + (ph === 'play' ? ' hot' : ph === 'timeup' ? ' end' : '');
-      $('statusLabel').textContent = {ready:'Ждём старта', countdown:'Отсчёт', play:'Идёт замер', timeup:'Время вышло'}[ph];
-      setRoll($('time'), ph === 'countdown' ? String(Math.ceil(r)) : ph === 'timeup' ? '0:00' : fmtTime(r), {up: false});
-      $('unit').textContent = ph === 'timeup' ? 'результат, dB' : 'максимум, dB';
-      renderActions(ph, isLast);
-    } else renderActions(ph, false);
-    const done = ranking(S);
-    $('results').hidden = !done.length;
-    $('resultsTitle').textContent = ph === 'finished' ? 'Итоги' : 'Уже сыграли';
-    $('reset').textContent = ph === 'finished' ? 'Начать новый конкурс' : 'Сбросить конкурс';
-    $('rows').innerHTML = done.map((p, i) => `<div class="row${i === 0 ? ' first' : ''}"><span>${esc(p.name)}</span><b>${fmt1(p.score)}<small>dB</small></b></div>`).join('');
-  }
-  requestAnimationFrame(tick);
+  if (!S) return;
+  const ph = phaseOf(S), p = S.participants[S.current];
+  const show = (id, on) => { const el = $(id); if (el.hidden === on) el.hidden = !on; };
+  show('setup', ph === 'idle');
+  show('game', !!(p && !S.finished));
+  show('final', ph === 'finished');
+  show('resetZone', ph !== 'idle');
+  show('namesToggle', ph !== 'idle');
+  if (ph === 'idle') { namesOpen = false; $('names').hidden = true; setText($('namesToggle'), 'Имена участников'); closeReset(); }
+  const fin = ph === 'finished';
+  setText($('resetOpen'), fin ? 'Начать новый конкурс' : 'Сбросить игру');
+  setText($('resetQ'), fin ? 'Начать новый конкурс?' : 'Сбросить игру?');
+  setText($('resetSub'), fin ? 'Итоги исчезнут, участников придётся задать заново.' : 'Все участники и результаты удалятся.');
+  setText($('resetYes'), fin ? 'Да, начать заново' : 'Да, сбросить');
+  renderNames();
+  if (p && !S.finished) {
+    const isLast = S.current === S.participants.length - 1;
+    setText($('name'), p.name);
+    setText($('of'), (S.current + 1) + ' из ' + S.participants.length);
+    setRoll($('score'), fmt1(p.score));
+    const st = $('status'), r = remaining(S);
+    const sc = 'status' + (ph === 'play' ? ' hot' : ph === 'timeup' ? ' end' : '');
+    if (st.className !== sc) st.className = sc;
+    setText($('statusLabel'), {ready:'Ждём старта', countdown:'Отсчёт', play:'Идёт замер', timeup:'Время вышло'}[ph]);
+    setRoll($('time'), ph === 'countdown' ? String(Math.ceil(r)) : ph === 'timeup' ? '0:00' : fmtTime(r), {up: false});
+    setText($('unit'), ph === 'timeup' ? 'результат, dB' : 'максимум, dB');
+    renderActions(ph, isLast);
+  } else renderActions(ph, false);
+  const done = ranking(S);
+  show('results', done.length > 0);
+  setText($('resultsTitle'), fin ? 'Итоги' : 'Уже сыграли');
+  setHtml($('rows'), done.map((q, i) => `<div class="row${i === 0 ? ' first' : ''}"><span>${esc(q.name)}</span><b>${fmt1(q.score)}<small>dB</small></b></div>`).join(''));
 }
+// Одна ошибка в отрисовке не должна навсегда останавливать страницу
+function tick(){ try { frame(); } catch (e) { console.error(e); } requestAnimationFrame(tick); }
 requestAnimationFrame(tick);
 </script></body></html>"""
 
