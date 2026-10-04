@@ -28,6 +28,8 @@ from threading import RLock
 from flask import Flask, Response, request, send_file
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
+import hashlib
+
 from dictation_audio import audio_bytes
 
 # Два набора по 10 слов; ведущий выбирает набор перед стартом.
@@ -41,6 +43,12 @@ WORDS_PER_GAME = 10
 # Номер озвучки каждого слова. Экран гостей знает только номер, а не само слово.
 AUDIO_IDS = {w: f"{n:02d}" for n, w in enumerate(WORD_SETS["1"] + WORD_SETS["2"], start=1)}
 AUDIO_WORDS = {i: w for w, i in AUDIO_IDS.items()}
+# Версия озвучки в ссылке: заменили запись слова — ссылка новая, и браузер не играет старую копию из кэша.
+AUDIO_VER = {w: hashlib.md5(audio_bytes(w) or b"").hexdigest()[:8] for w in AUDIO_IDS}
+
+
+def audio_url(word):
+    return f"audio/{AUDIO_IDS[word]}.mp3?v={AUDIO_VER[word]}"
 
 MAX_PARTICIPANTS = 12
 MAX_TYPED = 40
@@ -163,7 +171,7 @@ def snapshot_locked(gid, role):
         "name": parts[g["pi"]]["name"] if ph == "typing" and g["pi"] < len(parts) else "",
         "typed": g["typed"] if ph == "typing" else "",
         "show_table": g["show_table"],
-        "audio": f"audio/{AUDIO_IDS[word]}.mp3" if word else "",
+        "audio": audio_url(word) if word else "",
         "screens": {"count": len(SCREENS[gid]), "audio": sum(1 for v in SCREENS[gid].values() if v)},
         "bump": g["bump"],
         "rev": REV[gid],
@@ -588,7 +596,7 @@ def on_play(data=None):
         if not word:
             return {"ok": False, "why": "phase"}
         PLAY_SEQ[gid] += 1
-        msg = {"seq": PLAY_SEQ[gid], "audio": f"audio/{AUDIO_IDS[word]}.mp3", "word": word}
+        msg = {"seq": PLAY_SEQ[gid], "audio": audio_url(word), "word": word}
         screens, audio = len(SCREENS[gid]), sum(1 for v in SCREENS[gid].values() if v)
     socketio.emit("play", msg, to=f"{gid}:screen")
     return {"ok": True, "screens": screens, "audio": audio}
@@ -630,7 +638,7 @@ def screen():
 
 @app.get("/audio-check")
 def audio_check():
-    rows = [{"set": sid, "n": n, "word": w, "id": AUDIO_IDS[w]}
+    rows = [{"set": sid, "n": n, "word": w, "id": AUDIO_IDS[w], "v": AUDIO_VER[w]}
             for sid, words in WORD_SETS.items() for n, w in enumerate(words, start=1)]
     return page(CHECK_HTML, ROWS=json.dumps(rows, ensure_ascii=False))
 
@@ -1312,13 +1320,13 @@ const BASE = document.documentElement.dataset.base;
 let html = '', g = '';
 for (const r of ROWS) {
   if (r.set !== g) { g = r.set; html += `<h2>Набор ${g}</h2>`; }
-  html += `<div class="r"><button data-id="${r.id}" aria-label="Озвучить ${r.word}">▶</button><span>${r.word}</span><small>${r.n}</small></div>`;
+  html += `<div class="r"><button data-id="${r.id}" data-v="${r.v}" aria-label="Озвучить ${r.word}">▶</button><span>${r.word}</span><small>${r.n}</small></div>`;
 }
 document.getElementById('list').innerHTML = html;
 const au = new Audio();
 document.getElementById('list').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;
-  au.src = BASE + 'audio/' + b.dataset.id + '.mp3'; au.play().catch(() => {});
+  au.src = BASE + 'audio/' + b.dataset.id + '.mp3?v=' + b.dataset.v; au.play().catch(() => {});
 };
 </script></body></html>
 """
