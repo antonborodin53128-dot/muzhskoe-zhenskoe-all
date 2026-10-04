@@ -470,22 +470,6 @@ def on_submit(data=None):
     return {"ok": True}
 
 
-@socketio.on("skip")
-def on_skip(data=None):
-    """Участник не смог написать слово: ответ пустой, каждая буква слова — ошибка."""
-    data = payload(data)
-    gid = game_of(data)
-    if not gid:
-        return
-    with lock:
-        g = G[gid]
-        if not at_current(g, data) or not submit_locked(g, "", allow_empty=True):
-            return
-        save_locked()
-        snaps = snaps_locked(gid)
-    publish(gid, snaps)
-
-
 @socketio.on("back")
 def on_back(data=None):
     gid = game_of(data)
@@ -997,10 +981,7 @@ header{display:flex;justify-content:space-between;align-items:center;margin:4px 
       <div id="answers"></div>
       <button class="btn primary big" id="next" style="margin-top:14px">СЛЕДУЮЩЕЕ СЛОВО</button>
     </div>
-    <div class="two" id="typingBtns" style="margin-top:12px">
-      <button class="btn quiet" id="skip">Не смог написать</button>
-      <button class="btn quiet" id="back">Назад</button>
-    </div>
+    <button class="btn quiet" id="back" style="margin-top:12px">↩ Отменить последний ответ</button>
   </section>
 
   <section class="card" id="board" hidden>
@@ -1050,8 +1031,7 @@ function pickSet(id){
 document.querySelectorAll('#sets button').forEach(b => { b.onclick = () => pickSet(b.dataset.set); });
 $('start').onclick = () => emitGame('setup', {count, set: chosen});
 $('next').onclick = () => emitGame('next');
-$('skip').onclick = () => arm($('skip'), 'Точно пропустить?', () => emitGame('skip', {wi: S.wi, pi: S.pi}));
-$('back').onclick = () => arm($('back'), 'Откатить последний ответ?', () => emitGame('back'));
+$('back').onclick = () => arm($('back'), 'Нажмите ещё раз — ответ отменится', () => emitGame('back'));
 $('backFin').onclick = () => arm($('backFin'), 'Вернуться в игру?', () => emitGame('back'));
 $('finish').onclick = () => arm($('finish'), 'Точно завершить?', () => emitGame('finish'));
 $('table').onclick = () => emitGame('table', {show: !(S && S.show_table)});
@@ -1105,9 +1085,8 @@ function render(){
     setText($('phaseLabel'), ph === 'typing' ? 'идёт ввод' : 'разбор');
     setText($('word'), s.word || '');
     $('typingBox').hidden = ph !== 'typing';
-    $('skip').hidden = ph !== 'typing';
-    $('typingBtns').style.gridTemplateColumns = ph === 'typing' ? '1fr 1fr' : '1fr';
     $('revealBox').hidden = ph !== 'reveal';
+    $('back').hidden = ph === 'typing' && s.wi === 0 && s.pi === 0;     // отменять пока нечего
     if (ph === 'typing') {
       setText($('who'), s.name + ' пишет');
       renderTyped();
