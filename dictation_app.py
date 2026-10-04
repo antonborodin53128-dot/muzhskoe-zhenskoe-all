@@ -4,11 +4,11 @@
 ошибка в слове — это +1 ошибка (неверная, пропущенная или лишняя буква). Побеждает тот,
 у кого за игру меньше всего ошибок.
 
-В конкурсе две независимые игры по 10 слов: «Игра 1» и «Игра 2». У каждой свои
-участники, слова, ошибки и итоги, их можно играть в любом порядке и даже одновременно.
+Один экран и два набора по 10 слов. Перед стартом ведущий выбирает набор и запускает
+его на экран; после окончания можно сбросить игру и запустить другой набор.
 
-  /                    — пульт ведущего (телефон); кнопка «Озвучить слово»
-  /screen?game=1|2     — экран для гостей (проектор); к нему подключена клавиатура
+  /                    — пульт ведущего (телефон): выбор набора, кнопка «Озвучить слово»
+  /screen              — экран для гостей (проектор); к нему подключена клавиатура
                          и колонки, слово звучит на нём
   /audio-check         — прослушать озвучку всех 20 слов перед конкурсом
 
@@ -30,8 +30,8 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 
 from dictation_audio import audio_bytes
 
-# Две независимые игры по 10 слов.
-GAMES = {
+# Два набора по 10 слов; ведущий выбирает набор перед стартом.
+WORD_SETS = {
     "1": ["интеллигентность", "ассимиляция", "параллелепипед", "аббревиатура", "искусство",
           "привередливый", "комбинезон", "периферия", "бюллетень", "целлофан"],
     "2": ["иррациональность", "идентифицировать", "коррозия", "прецедент", "палисадник",
@@ -39,7 +39,7 @@ GAMES = {
 }
 WORDS_PER_GAME = 10
 # Номер озвучки каждого слова. Экран гостей знает только номер, а не само слово.
-AUDIO_IDS = {w: f"{n:02d}" for n, w in enumerate(GAMES["1"] + GAMES["2"], start=1)}
+AUDIO_IDS = {w: f"{n:02d}" for n, w in enumerate(WORD_SETS["1"] + WORD_SETS["2"], start=1)}
 AUDIO_WORDS = {i: w for w, i in AUDIO_IDS.items()}
 
 MAX_PARTICIPANTS = 12
@@ -63,6 +63,7 @@ lock = RLock()
 
 def new_game():
     return {
+        "set": None,           # номер выбранного набора слов
         "phase": "idle",       # idle → typing ⇄ reveal → finished
         "participants": [],    # [{"name": str}]
         "words": [],           # слова игры в случайном порядке
@@ -76,10 +77,11 @@ def new_game():
     }
 
 
-G = {gid: new_game() for gid in GAMES}
-REV = {gid: 0 for gid in GAMES}          # номер снимка: клиент игнорирует снимок, обогнанный более новым
-PLAY_SEQ = {gid: 0 for gid in GAMES}
-SCREENS = {gid: {} for gid in GAMES}     # sid экрана -> включён ли на нём звук
+GID = "main"                             # игра одна; ключ нужен только для общих структур ниже
+G = {GID: new_game()}
+REV = {GID: 0}          # номер снимка: клиент игнорирует снимок, обогнанный более новым
+PLAY_SEQ = {GID: 0}
+SCREENS = {GID: {}}     # sid экрана -> включён ли на нём звук
 SID_INFO = {}                            # sid -> (игра, роль)
 
 
@@ -151,7 +153,7 @@ def snapshot_locked(gid, role):
     parts, tot = g["participants"], totals_locked(g)
     word = current_word_locked(g)
     snap = {
-        "game": gid,
+        "set": g["set"],
         "role": role,
         "phase": ph,
         "participants": [{"name": p["name"], "errors": tot[i]} for i, p in enumerate(parts)],
@@ -193,7 +195,7 @@ def save_locked():
     data = {"saved_at": time.time(), "games": {}}
     for gid, g in G.items():
         data["games"][gid] = {
-            "phase": g["phase"], "participants": g["participants"], "words": g["words"],
+            "set": g["set"], "phase": g["phase"], "participants": g["participants"], "words": g["words"],
             "wi": g["wi"], "pi": g["pi"], "show_table": g["show_table"], "bump": g["bump"],
             "resume": g["resume"],
             # ошибки и разбор пересчитываются при загрузке, в файле только то, что набрали
@@ -215,7 +217,7 @@ def load_state():
         if time.time() - float(data["saved_at"]) > STATE_TTL:
             return
         for gid, raw in data["games"].items():
-            if gid not in GAMES:
+            if gid != GID or raw.get("set") not in WORD_SETS:
                 continue
             phase = raw["phase"]
             parts = [{"name": " ".join(str(p["name"]).split())[:32] or f"Участник {i + 1}"}
@@ -223,7 +225,7 @@ def load_state():
             if phase == "idle" or not parts:
                 continue
             words = [str(w) for w in raw["words"]]
-            if sorted(words) != sorted(GAMES[gid]) or phase not in ("typing", "reveal", "finished"):
+            if sorted(words) != sorted(WORD_SETS[raw["set"]]) or phase not in ("typing", "reveal", "finished"):
                 continue
             wi, pi = int(raw["wi"]), int(raw["pi"])
             if not (0 <= wi <= WORDS_PER_GAME and 0 <= pi < len(parts)):
@@ -242,7 +244,7 @@ def load_state():
             if resume is not None:
                 resume = [str(resume[0]), int(resume[1]), int(resume[2])]
             g = G[gid]
-            g.update(phase=phase, participants=parts, words=words, wi=wi, pi=pi, typed="", answers=answers,
+            g.update(set=raw["set"], phase=phase, participants=parts, words=words, wi=wi, pi=pi, typed="", answers=answers,
                      show_table=bool(raw.get("show_table", False)), resume=resume,
                      bump=int(raw.get("bump", 0)) + 1)
     except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError):
@@ -310,8 +312,7 @@ def payload(data):
 
 
 def game_of(data):
-    gid = str(payload(data).get("game", ""))
-    return gid if gid in GAMES else None
+    return GID
 
 
 def int_of(value, default=-1):
@@ -412,14 +413,17 @@ def on_setup(data=None):
     if not gid:
         return
     count = max(1, min(MAX_PARTICIPANTS, int_of(data.get("count"), 4)))
+    set_id = str(data.get("set", ""))
+    if set_id not in WORD_SETS:
+        return
     with lock:
         g = G[gid]
         if g["phase"] != "idle":
             return
-        words = GAMES[gid][:]
+        words = WORD_SETS[set_id][:]
         random.shuffle(words)
         g.update(new_game())
-        g.update(phase="typing", words=words,
+        g.update(set=set_id, phase="typing", words=words,
                  participants=[{"name": f"Участник {i + 1}"} for i in range(count)], bump=1)
         save_locked()
         snaps = snaps_locked(gid)
@@ -615,7 +619,8 @@ def page(template, **extra):
 
 @app.get("/")
 def control():
-    return page(CONTROL_HTML)
+    preview = {f"SET{sid}": ", ".join(words[:3]) + "…" for sid, words in WORD_SETS.items()}
+    return page(CONTROL_HTML, **preview)
 
 
 @app.get("/screen")
@@ -625,8 +630,8 @@ def screen():
 
 @app.get("/audio-check")
 def audio_check():
-    rows = [{"game": gid, "n": n, "word": w, "id": AUDIO_IDS[w]}
-            for gid, words in GAMES.items() for n, w in enumerate(words, start=1)]
+    rows = [{"set": sid, "n": n, "word": w, "id": AUDIO_IDS[w]}
+            for sid, words in WORD_SETS.items() for n, w in enumerate(words, start=1)]
     return page(CHECK_HTML, ROWS=json.dumps(rows, ensure_ascii=False))
 
 
@@ -690,7 +695,6 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--signal);outline-off
 CLIENT_JS = r"""
 const BASE = document.documentElement.dataset.base || '/';
 const ROLE = document.documentElement.dataset.role === 'screen' ? 'screen' : 'host';
-const GAME = ['1', '2'].includes(new URLSearchParams(location.search).get('game')) ? new URLSearchParams(location.search).get('game') : '1';
 const MAX_TYPED = 40;
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -720,7 +724,7 @@ if (offlineBar) {
   b.onclick = () => location.reload(); offlineBar.appendChild(b);
 }
 const setOffline = on => { if (offlineBar) offlineBar.classList.toggle('on', on); };
-socket.on('connect', () => { downSince = 0; lastState = performance.now(); setOffline(false); socket.emit('join', {game: GAME, role: ROLE}); window.onConnect && window.onConnect(); });
+socket.on('connect', () => { downSince = 0; lastState = performance.now(); setOffline(false); socket.emit('join', {role: ROLE}); window.onConnect && window.onConnect(); });
 socket.on('disconnect', () => { if (!downSince) downSince = performance.now(); setOffline(true); });
 socket.on('connect_error', () => { if (!downSince) downSince = performance.now(); setOffline(true); });
 
@@ -746,7 +750,7 @@ socket.on('state', s => {
 });
 function emitGame(name, data, ack){
   if (!socket.connected) { setOffline(true); return false; }    // команды не копятся: «Дальше» не должно выстрелить позже
-  const msg = Object.assign({game: GAME}, data || {});
+  const msg = data || {};
   if (ack) socket.emit(name, msg, ack); else socket.emit(name, msg);   // пустой аргумент ушёл бы на сервер как null
   return true;
 }
@@ -781,7 +785,7 @@ function keyDone(){
 }
 
 /* ---------- живучесть связи ---------- */
-const wake = () => { if (document.hidden) return; if (socket.connected) socket.emit('sync', {game: GAME, role: ROLE}); else { try { socket.connect(); } catch (e) {} } };
+const wake = () => { if (document.hidden) return; if (socket.connected) socket.emit('sync', {role: ROLE}); else { try { socket.connect(); } catch (e) {} } };
 document.addEventListener('visibilitychange', wake);
 addEventListener('online', wake);
 addEventListener('focus', wake);
@@ -789,7 +793,7 @@ addEventListener('pageshow', wake);
 function reconnect(){ lastState = performance.now(); setOffline(true); try { socket.disconnect(); socket.connect(); } catch (e) {} }
 setInterval(() => {                       // живой пульс: страница никогда не «застывает» молча
   if (document.hidden) return;
-  if (socket.connected) { socket.emit('sync', {game: GAME, role: ROLE}); if (performance.now() - lastState > 12000) reconnect(); }
+  if (socket.connected) { socket.emit('sync', {role: ROLE}); if (performance.now() - lastState > 12000) reconnect(); }
 }, 2000);
 setInterval(() => { fetch(BASE + 'healthz', {cache: 'no-store'}).catch(() => {}); }, 240000);   // хостинг не засыпает
 // Связи нет дольше 20 секунд, а сервер отвечает: сокет «залип». Свежая страница вернёт связь, игра хранится на сервере.
@@ -904,9 +908,12 @@ body{background:radial-gradient(120% 60% at 0 0,var(--ink-2),var(--ink) 60%)}
 .wrap{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:16px 16px 40px}
 header{display:flex;justify-content:space-between;align-items:center;margin:4px 0 14px}
 .wordmark{font-size:20px}
-.tabs{display:flex;gap:6px}
-.tabs a{display:block;padding:9px 16px;border-radius:999px;border:1px solid var(--line);color:var(--mist);text-decoration:none;font-weight:800;font-size:14px}
-.tabs a.on{background:var(--signal);color:var(--signal-ink);border-color:var(--signal)}
+.setlabel{padding:8px 16px;border-radius:999px;border:1px solid var(--signal);color:var(--signal);font-weight:800;font-size:14px}
+.sets{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0 4px}
+.sets button{text-align:left;padding:14px;border-radius:var(--r-m);border:1px solid var(--line);background:var(--ink-2);color:var(--chalk)}
+.sets button b{display:block;font-family:var(--display);font-size:16px}
+.sets button small{display:block;margin-top:6px;color:var(--mist);font-size:12px;line-height:1.35}
+.sets button.on{border-color:var(--signal);background:var(--signal-soft);box-shadow:0 0 0 1px var(--signal)}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);padding:18px;margin-bottom:14px}
 .muted{color:var(--mist);font-size:14px;line-height:1.4}
 .btn{display:block;width:100%;border:0;border-radius:var(--r-m);padding:18px 14px;font-weight:800;font-size:17px;background:var(--ink-2);border:1px solid var(--line);touch-action:manipulation}
@@ -953,15 +960,20 @@ header{display:flex;justify-content:space-between;align-items:center;margin:4px 
 <div class="wrap">
   <header>
     <span class="wordmark"><i></i>ДИКТАНТ</span>
-    <nav class="tabs"><a id="tab1" href="?game=1">ИГРА 1</a><a id="tab2" href="?game=2">ИГРА 2</a></nav>
+    <span class="setlabel" id="setLabel"></span>
   </header>
   <div class="status" id="scr">Подключаюсь…</div>
 
   <section class="card" id="idle" hidden>
-    <b>Сколько участников?</b>
+    <b>Какой набор слов запускаем?</b>
+    <div class="sets" id="sets">
+      <button type="button" data-set="1" class="on"><b>НАБОР 1</b><small>%%SET1%%</small></button>
+      <button type="button" data-set="2"><b>НАБОР 2</b><small>%%SET2%%</small></button>
+    </div>
+    <b style="display:block;margin-top:16px">Сколько участников?</b>
     <div class="stepper"><button id="minus" aria-label="Меньше">−</button><output id="count">4</output><button id="plus" aria-label="Больше">+</button></div>
-    <button class="btn primary big" id="start">НАЧАТЬ ИГРУ</button>
-    <p class="muted" style="margin:12px 0 0">10 слов в случайном порядке. Участники по очереди пишут каждое слово на клавиатуре гостевого экрана. Каждая ошибка — +1 к счёту, побеждает тот, у кого ошибок меньше.</p>
+    <button class="btn primary big" id="start">ЗАПУСТИТЬ НАБОР 1 НА ЭКРАН</button>
+    <p class="muted" style="margin:12px 0 0">Слова идут в случайном порядке. Участники по очереди пишут каждое слово на клавиатуре гостевого экрана. Каждая ошибка — +1 к счёту, побеждает тот, у кого ошибок меньше.</p>
   </section>
 
   <section class="card" id="play" hidden>
@@ -1011,8 +1023,7 @@ header{display:flex;justify-content:space-between;align-items:center;margin:4px 
 <script>
 %%CLIENT_JS%%
 %%BG_JS%%
-$('tab' + GAME).classList.add('on');
-let count = 4, namesOpen = false;
+let count = 4, namesOpen = false, chosen = '1';
 
 /* Подтверждения без системных окон: кнопка меняет подпись и ждёт второго нажатия. */
 function disarm(btn){ if (!btn || !btn._armed) return; btn._armed = false; clearTimeout(btn._armT); btn.textContent = btn._orig; btn.classList.remove('armed'); }
@@ -1023,7 +1034,13 @@ function arm(btn, askText, run){
 }
 $('minus').onclick = () => { count = Math.max(1, count - 1); setText($('count'), count); };
 $('plus').onclick = () => { count = Math.min(12, count + 1); setText($('count'), count); };
-$('start').onclick = () => emitGame('setup', {count});
+function pickSet(id){
+  chosen = id;
+  document.querySelectorAll('#sets button').forEach(b => b.classList.toggle('on', b.dataset.set === id));
+  setText($('start'), 'ЗАПУСТИТЬ НАБОР ' + id + ' НА ЭКРАН');
+}
+document.querySelectorAll('#sets button').forEach(b => { b.onclick = () => pickSet(b.dataset.set); });
+$('start').onclick = () => emitGame('setup', {count, set: chosen});
 $('next').onclick = () => emitGame('next');
 $('skip').onclick = () => arm($('skip'), 'Точно пропустить?', () => emitGame('skip', {wi: S.wi, pi: S.pi}));
 $('back').onclick = () => arm($('back'), 'Откатить последний ответ?', () => emitGame('back'));
@@ -1073,6 +1090,8 @@ function render(){
   scr.className = 'status ' + (sc.count && sc.audio ? 'ok' : 'warn');
   setText(scr, !sc.count ? 'Экран гостей не открыт' : !sc.audio ? 'Экран открыт, звук не включён — нажмите на нём любую клавишу' : 'Экран гостей готов, звук включён');
 
+  setText($('setLabel'), s.set ? 'НАБОР ' + s.set : '');
+  $('setLabel').hidden = !s.set;
   if (ph === 'typing' || ph === 'reveal') {
     setText($('prog'), 'Слово ' + (s.wi + 1) + ' из ' + s.total);
     setText($('phaseLabel'), ph === 'typing' ? 'идёт ввод' : 'разбор');
@@ -1178,13 +1197,12 @@ body{overflow:hidden;background:radial-gradient(60% 70% at 50% 55%,var(--signal-
 %%CLIENT_JS%%
 %%BG_JS%%
 %%SND_JS%%
-setText($('gameLabel'), 'ИГРА ' + GAME);
 
 /* ---------- звук: озвучка слов ---------- */
 const bufs = {};
 let lastSeq = 0;
 function audioReady(){ const c = Snd.ctx(); return !!c && c.state === 'running'; }
-function reportAudio(){ if (socket.connected) socket.emit('screen_audio', {game: GAME, ready: audioReady()}); setBtn(); }
+function reportAudio(){ if (socket.connected) socket.emit('screen_audio', {ready: audioReady()}); setBtn(); }
 function setBtn(){ $('soundBtn').hidden = audioReady(); }
 async function unlock(){ const c = Snd.ctx(); if (c && c.state !== 'running') { try { await c.resume(); } catch (e) {} } reportAudio(); }
 window.onAnyKey = unlock;
@@ -1215,12 +1233,12 @@ let prevPhase = null, prevWi = -1;
 function render(){
   const s = S; if (!s) return;
   const ph = s.phase;
-  setText($('gameLabel'), 'ИГРА ' + GAME + (ph === 'typing' || ph === 'reveal' ? ' · СЛОВО ' + (s.wi + 1) + ' ИЗ ' + s.total : ''));
+  setText($('gameLabel'), ph === 'typing' || ph === 'reveal' ? 'СЛОВО ' + (s.wi + 1) + ' ИЗ ' + s.total : '');
   $('tableOv').hidden = !(s.show_table && ph !== 'idle' && ph !== 'finished');
   if (!$('tableOv').hidden) setHtml($('tableRows'), board(s, true));
   let html = '';
   if (ph === 'idle') {
-    html = `<div class="big">ДИКТАНТ</div><div class="sub">Игра ${GAME} · ждём ведущего</div>`;
+    html = `<div class="big">ДИКТАНТ</div><div class="sub">Ждём ведущего</div>`;
   } else if (ph === 'typing') {
     html = `<div class="cnt">СЛУШАЙТЕ СЛОВО</div>
       <div class="who"><span>${esc(s.name)}</span>, пишите!</div>
@@ -1293,7 +1311,7 @@ const ROWS = %%ROWS%%;
 const BASE = document.documentElement.dataset.base;
 let html = '', g = '';
 for (const r of ROWS) {
-  if (r.game !== g) { g = r.game; html += `<h2>Игра ${g}</h2>`; }
+  if (r.set !== g) { g = r.set; html += `<h2>Набор ${g}</h2>`; }
   html += `<div class="r"><button data-id="${r.id}" aria-label="Озвучить ${r.word}">▶</button><span>${r.word}</span><small>${r.n}</small></div>`;
 }
 document.getElementById('list').innerHTML = html;

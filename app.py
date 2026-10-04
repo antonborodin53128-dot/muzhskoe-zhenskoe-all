@@ -101,9 +101,8 @@ def kolcebros_menu():
 @app.get("/contest/diktant")
 def diktant_menu():
     return render_template_string(MENU,css=CSS,name="ДИКТАНТ",qr=qr_data(absolute("/women/diktant/")),actions=[
-        {"title":"ВЕДУЩИЙ","url":"/women/diktant/","desc":"Управление игрой, кнопка «Озвучить слово». Игру 1 и 2 можно переключать вверху"},
-        {"title":"ГОСТЕВОЙ ЭКРАН — ИГРА 1","url":"/women/diktant/screen?game=1","desc":"Экран с клавиатурой и колонками для первой игры","new":True},
-        {"title":"ГОСТЕВОЙ ЭКРАН — ИГРА 2","url":"/women/diktant/screen?game=2","desc":"Экран с клавиатурой и колонками для второй игры","new":True},
+        {"title":"ВЕДУЩИЙ","url":"/women/diktant/","desc":"Выбор набора слов, запуск на экран, кнопка «Озвучить слово»"},
+        {"title":"ГОСТЕВОЙ ЭКРАН","url":"/women/diktant/screen","desc":"Экран с клавиатурой и колонками для проектора","new":True},
         {"title":"ПРОВЕРКА ОЗВУЧКИ","url":"/women/diktant/audio-check","desc":"Прослушать все 20 слов перед конкурсом","class":"setup","new":True},
     ])
 
