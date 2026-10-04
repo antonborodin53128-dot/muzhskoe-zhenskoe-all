@@ -6,6 +6,7 @@ from hamster_app import app as hamster_app
 from voice_app import app as voice_app
 from note_app import app as note_app
 from kolcebros_app import app as kolcebros_app
+from dictation_app import app as dictation_app
 import io, base64
 import qrcode
 
@@ -35,7 +36,7 @@ HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 <a class="card" href="/contest/balls">ШАРИКИ</a><a class="card" href="/contest/hamster">ХОМЯК</a><a class="card" href="/contest/voice">VOICE METER</a>
 </div></div>
 <div class="section"><div class="title f">ЖЕНСКОЕ</div><div class="grid">
-<a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><a class="card f" href="/contest/kolcebros">КОЛЬЦЕБРОС</a><div class="card f disabled">КОНКУРС 3</div>
+<a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><a class="card f" href="/contest/kolcebros">КОЛЬЦЕБРОС</a><a class="card f" href="/contest/diktant">ДИКТАНТ</a>
 </div></div>
 <div class="section"><div class="title mix">МУЖЧИНА VS ЖЕНЩИНА</div><div class="grid"><div class="card mix disabled">ОБЩИЙ КОНКУРС</div></div></div>
 </div></body></html>"""
@@ -97,12 +98,22 @@ def kolcebros_menu():
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/women/kolcebros/screen","desc":"Экран для проектора с результатами","new":True},
     ])
 
+@app.get("/contest/diktant")
+def diktant_menu():
+    return render_template_string(MENU,css=CSS,name="ДИКТАНТ",qr=qr_data(absolute("/women/diktant/")),actions=[
+        {"title":"ВЕДУЩИЙ","url":"/women/diktant/","desc":"Управление игрой, кнопка «Озвучить слово». Игру 1 и 2 можно переключать вверху"},
+        {"title":"ГОСТЕВОЙ ЭКРАН — ИГРА 1","url":"/women/diktant/screen?game=1","desc":"Экран с клавиатурой и колонками для первой игры","new":True},
+        {"title":"ГОСТЕВОЙ ЭКРАН — ИГРА 2","url":"/women/diktant/screen?game=2","desc":"Экран с клавиатурой и колонками для второй игры","new":True},
+        {"title":"ПРОВЕРКА ОЗВУЧКИ","url":"/women/diktant/audio-check","desc":"Прослушать все 20 слов перед конкурсом","class":"setup","new":True},
+    ])
+
 application=DispatcherMiddleware(app,{
     "/men/balls":balls_app,
     "/men/hamster":hamster_app,
     "/men/voice":voice_app,
     "/women/note":note_app,
     "/women/kolcebros":kolcebros_app,
+    "/women/diktant":dictation_app,
 })
 if __name__=="__main__":
     run_simple("0.0.0.0",5000,application,use_reloader=True)
