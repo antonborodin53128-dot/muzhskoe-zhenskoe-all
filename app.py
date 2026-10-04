@@ -5,6 +5,7 @@ from balls_app import app as balls_app
 from hamster_app import app as hamster_app
 from voice_app import app as voice_app
 from note_app import app as note_app
+from kolcebros_app import app as kolcebros_app
 import io, base64
 import qrcode
 
@@ -34,7 +35,7 @@ HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 <a class="card" href="/contest/balls">ШАРИКИ</a><a class="card" href="/contest/hamster">ХОМЯК</a><a class="card" href="/contest/voice">VOICE METER</a>
 </div></div>
 <div class="section"><div class="title f">ЖЕНСКОЕ</div><div class="grid">
-<a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><div class="card f disabled">КОНКУРС 2</div><div class="card f disabled">КОНКУРС 3</div>
+<a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><a class="card f" href="/contest/kolcebros">КОЛЬЦЕБРОС</a><div class="card f disabled">КОНКУРС 3</div>
 </div></div>
 <div class="section"><div class="title mix">МУЖЧИНА VS ЖЕНЩИНА</div><div class="grid"><div class="card mix disabled">ОБЩИЙ КОНКУРС</div></div></div>
 </div></body></html>"""
@@ -89,11 +90,19 @@ def note_menu():
         {"title":"SETUP","url":"/women/note/setup","desc":"Выбор аудиовхода, тюнер и проверка попадания. Открывать на компьютере с микрофоном","class":"setup","new":True},
     ])
 
+@app.get("/contest/kolcebros")
+def kolcebros_menu():
+    return render_template_string(MENU,css=CSS,name="КОЛЬЦЕБРОС",qr=qr_data(absolute("/women/kolcebros/")),actions=[
+        {"title":"ВЕДУЩИЙ","url":"/women/kolcebros/","desc":"Управление участниками и баллами"},
+        {"title":"ГОСТЕВОЙ ЭКРАН","url":"/women/kolcebros/screen","desc":"Экран для проектора с результатами","new":True},
+    ])
+
 application=DispatcherMiddleware(app,{
     "/men/balls":balls_app,
     "/men/hamster":hamster_app,
     "/men/voice":voice_app,
     "/women/note":note_app,
+    "/women/kolcebros":kolcebros_app,
 })
 if __name__=="__main__":
     run_simple("0.0.0.0",5000,application,use_reloader=True)
