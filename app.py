@@ -33,7 +33,7 @@ HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 <div class="top"><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="slash">/</span> <span class="fword">ЖЕНСКОЕ</span></div></div>
 <h1>КОНКУРСЫ</h1>
 <div class="section"><div class="title">МУЖСКОЕ</div><div class="grid">
-<a class="card" href="/contest/balls">ШАРИКИ</a><a class="card" href="/contest/hamster">ХОМЯК</a><a class="card" href="/contest/voice">VOICE METER</a>
+<a class="card" href="/contest/voice">VOICE METER</a><a class="card" href="/contest/balls">ШАРИКИ</a><a class="card" href="/contest/hamster">ХОМЯК</a>
 </div></div>
 <div class="section"><div class="title f">ЖЕНСКОЕ</div><div class="grid">
 <a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><a class="card f" href="/contest/kolcebros">КОЛЬЦЕБРОС</a><a class="card f" href="/contest/diktant">ДИКТАНТ</a>
