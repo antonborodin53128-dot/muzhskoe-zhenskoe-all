@@ -569,7 +569,7 @@ const Bg = (() => {
     ctx.restore();
   }
 
-  const icons = Array.from({length: 26}, () => ({
+  const icons = Array.from({length: 12}, () => ({
     x: Math.random(), y: Math.random(), r: 11 + Math.random() * 20,
     v: .012 + Math.random() * .024, a: .09 + Math.random() * .1,
     w: Math.random() * 6, rot: (Math.random() - .5) * .7, rs: .25 + Math.random() * .4,
