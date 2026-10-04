@@ -74,10 +74,10 @@ def hamster_menu():
 
 @app.get("/contest/voice")
 def voice_menu():
-    return render_template_string(MENU,css=CSS,name="VOICE METER",qr=qr_data(absolute("/men/voice/control")),actions=[
-        {"title":"ВЕДУЩИЙ","url":"/men/voice/control","desc":"Участники, старт и результаты"},
-        {"title":"ГОСТЕВОЙ ЭКРАН","url":"/men/voice/screen","desc":"Вертикальный индикатор и результат в dB","new":True},
-        {"title":"НАСТРОЙКА АУДИОВХОДА","url":"/men/voice/setup","desc":"Выбор микрофона / звуковой карты","class":"setup","new":True},
+    return render_template_string(MENU,css=CSS,name="VOICE METER",qr=qr_data(absolute("/men/voice/")),actions=[
+        {"title":"ВЕДУЩИЙ","url":"/men/voice/","desc":"Управление участниками, таймером и результатами"},
+        {"title":"ГОСТЕВОЙ ЭКРАН","url":"/men/voice/screen","desc":"Экран для проектора со шкалой громкости. Слушает микрофон","new":True},
+        {"title":"SETUP","url":"/men/voice/setup","desc":"Выбор аудиовхода и чувствительности. Открывать на компьютере с микрофоном","class":"setup","new":True},
     ])
 
 application=DispatcherMiddleware(app,{
