@@ -12,23 +12,35 @@ Socket.IO. Сервер сам считает раунды и максимум, 
 показывают одно и то же. Все ссылки относительные, поэтому этот же файл работает
 и отдельно, и внутри общего сборника (/men/voice/...).
 """
+import json
 import math
 import os
+import secrets
+import tempfile
 import time
-from threading import Lock, Timer
+from threading import RLock, Timer
 
 from flask import Flask, redirect, render_template_string, request
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room
 
 PREP_SECONDS = int(os.environ.get("PREP_SECONDS", 5))
 ROUND_SECONDS = int(os.environ.get("ROUND_SECONDS", 5))   # сколько секунд кричит каждый участник
 MAX_PARTICIPANTS = 30
-LIVE_INTERVAL = 0.04      # не чаще 25 раз в секунду рассылаем живой уровень
+LIVE_INTERVAL = 0.08      # живой уровень для экранов — не чаще 12 раз в секунду
+# Состояние игры переживает перезапуск процесса: ведущий не теряет конкурс из-за сбоя или перезагрузки сервера.
+STATE_FILE = os.environ.get("VOICE_STATE_FILE", os.path.join(tempfile.gettempdir(), "voice_meter_state.json"))
+STATE_TTL = 6 * 3600
+BOOT = secrets.token_hex(4)   # меняется при каждом запуске сервера: клиенты понимают, что номера состояний начались заново
 
 app = Flask(__name__)
-# Короткий пинг: оборванное соединение (уснул телефон, сменилась сеть) замечается за секунды, а не за минуту.
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", ping_interval=10, ping_timeout=15)
-lock = Lock()
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", ping_interval=15, ping_timeout=25)
+
+# ВАЖНО. socketio.emit() может прямо внутри себя закрыть «протухшее» соединение (например, свёрнутое окно)
+# и тут же вызвать on_disconnect в том же потоке. Если emit() вызван под этой блокировкой, а on_disconnect
+# тоже берёт её, поток зависает сам на себе, и весь сервер перестаёт отвечать.
+# Поэтому: под блокировкой только меняем состояние и собираем снимок, а рассылаем всегда ПОСЛЕ неё.
+# RLock — страховка на случай повторного входа.
+lock = RLock()
 
 state = {
     "participants": [],   # [{"name": str, "score": float, "done": bool}]
@@ -37,6 +49,7 @@ state = {
     "started_at": None,   # момент нажатия «Запустить время»; дальше отсчёт и раунд
     "round": ROUND_SECONDS,
     "bump": 0,
+    "rev": 0,             # номер снимка: клиент игнорирует снимок, который пришёл позже более нового
 }
 # Какой экран сейчас слушает микрофон. Принимаем уровень только от него.
 mic = {"sid": None, "label": "", "emit_at": 0.0}
@@ -59,6 +72,7 @@ def phase_locked(now=None):
 
 
 def snapshot_locked():
+    state["rev"] += 1
     return {
         "participants": [dict(p) for p in state["participants"]],
         "current": state["current"],
@@ -69,11 +83,14 @@ def snapshot_locked():
         "round": state["round"],
         "mic": {"on": mic["sid"] is not None, "label": mic["label"]},
         "server_now": time.time(),
+        "rev": state["rev"],
+        "boot": BOOT,
     }
 
 
-def broadcast_locked():
-    socketio.emit("state", snapshot_locked())
+def publish(snap):
+    """Разослать снимок всем. Вызывать только когда блокировка уже отпущена."""
+    socketio.emit("state", snap)
 
 
 def current_player_locked():
@@ -81,6 +98,42 @@ def current_player_locked():
     if 0 <= i < len(state["participants"]):
         return state["participants"][i]
     return None
+
+
+def save_locked():
+    data = {k: state[k] for k in ("participants", "current", "finished", "started_at", "round", "bump")}
+    data["saved_at"] = time.time()
+    try:
+        tmp = STATE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, STATE_FILE)
+    except OSError:
+        pass   # диск недоступен — игра всё равно идёт, просто без сохранения
+
+
+def load_state():
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        if time.time() - float(data["saved_at"]) > STATE_TTL:
+            return
+        parts = [{"name": str(p["name"])[:32], "score": float(p["score"]), "done": bool(p["done"])}
+                 for p in data["participants"]][:MAX_PARTICIPANTS]
+        if not parts:
+            return
+        cur, finished = int(data["current"]), bool(data["finished"])
+        if not finished and not 0 <= cur < len(parts):
+            return
+        started = data["started_at"]
+        state.update(participants=parts, current=cur, finished=finished,
+                     started_at=None if started is None else float(started),
+                     round=ROUND_SECONDS, bump=int(data.get("bump", 0)) + 1)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+
+
+load_state()
 
 
 def schedule_round_end_locked():
@@ -94,8 +147,11 @@ def schedule_round_end_locked():
 
 def round_end(token):
     with lock:
-        if state["started_at"] == token:
-            broadcast_locked()
+        if state["started_at"] != token:
+            return
+        save_locked()
+        snap = snapshot_locked()
+    publish(snap)
 
 
 # ---------- события ----------
@@ -103,21 +159,32 @@ def round_end(token):
 @socketio.on("connect")
 def on_connect(data=None):
     with lock:
-        emit("state", snapshot_locked())
+        snap = snapshot_locked()
+    emit("state", snap)
 
 
 @socketio.on("disconnect")
 def on_disconnect(*args):
+    snap = None
     with lock:
         if mic["sid"] == request.sid:
             mic.update(sid=None, label="")
-            broadcast_locked()
+            snap = snapshot_locked()
+    if snap:
+        publish(snap)
 
 
 @socketio.on("sync")
 def on_sync(data=None):
     with lock:
-        emit("state", snapshot_locked())
+        snap = snapshot_locked()
+    emit("state", snap)
+
+
+@socketio.on("watch")
+def on_watch(data=None):
+    """Экран для гостей просит живой уровень. Пульт ведущего его не получает."""
+    join_room("screens")
 
 
 @socketio.on("mic_claim")
@@ -125,20 +192,24 @@ def on_mic_claim(data=None):
     label = " ".join(str((data or {}).get("label", "")).split())[:80]
     with lock:
         mic.update(sid=request.sid, label=label)
-        broadcast_locked()
+        snap = snapshot_locked()
+    publish(snap)
 
 
 @socketio.on("mic_release")
 def on_mic_release(data=None):
+    snap = None
     with lock:
         if mic["sid"] == request.sid:
             mic.update(sid=None, label="")
-            broadcast_locked()
+            snap = snapshot_locked()
+    if snap:
+        publish(snap)
 
 
 @socketio.on("mic_level")
 def on_mic_level(data=None):
-    """Уровень 0–100 от экрана с микрофоном. В раунде запоминаем максимум."""
+    """Уровень 0–100 от экрана с микрофоном (пик с прошлой отправки). В раунде запоминаем максимум."""
     try:
         level = float((data or {}).get("level", 0))
     except (TypeError, ValueError):
@@ -146,6 +217,7 @@ def on_mic_level(data=None):
     if not math.isfinite(level):
         return
     level = round(max(0.0, min(100.0, level)), 1)
+    live = None
     with lock:
         if mic["sid"] != request.sid:
             return
@@ -155,7 +227,9 @@ def on_mic_level(data=None):
             player["score"] = level
         if now - mic["emit_at"] >= LIVE_INTERVAL:
             mic["emit_at"] = now
-            socketio.emit("live", {"level": level, "score": player["score"] if player else 0.0})
+            live = {"level": level, "score": player["score"] if player else 0.0}
+    if live:
+        socketio.emit("live", live, to="screens")
 
 
 @socketio.on("setup")
@@ -172,16 +246,21 @@ def on_setup(data=None):
             current=0, finished=False, started_at=None, round=ROUND_SECONDS,
         )
         state["bump"] += 1
-        broadcast_locked()
+        save_locked()
+        snap = snapshot_locked()
+    publish(snap)
 
 
 @socketio.on("start_timer")
 def on_start_timer(data=None):
     with lock:
-        if phase_locked() == "ready":
-            state["started_at"] = time.time()
-            schedule_round_end_locked()
-            broadcast_locked()
+        if phase_locked() != "ready":
+            return
+        state["started_at"] = time.time()
+        schedule_round_end_locked()
+        save_locked()
+        snap = snapshot_locked()
+    publish(snap)
 
 
 @socketio.on("replay")
@@ -189,11 +268,14 @@ def on_replay(data=None):
     """Переиграть раунд текущего участника."""
     with lock:
         player = current_player_locked()
-        if player and not state["finished"]:
-            player.update(score=0.0, done=False)
-            state["started_at"] = None
-            state["bump"] += 1
-            broadcast_locked()
+        if not player or state["finished"]:
+            return
+        player.update(score=0.0, done=False)
+        state["started_at"] = None
+        state["bump"] += 1
+        save_locked()
+        snap = snapshot_locked()
+    publish(snap)
 
 
 @socketio.on("next")
@@ -208,7 +290,9 @@ def on_next(data=None):
         else:
             state["finished"] = True
         state["started_at"] = None
-        broadcast_locked()
+        save_locked()
+        snap = snapshot_locked()
+    publish(snap)
 
 
 @socketio.on("rename")
@@ -220,9 +304,12 @@ def on_rename(data=None):
         return
     name = " ".join(str(data.get("name", "")).split())[:32]
     with lock:
-        if 0 <= i < len(state["participants"]):
-            state["participants"][i]["name"] = name or f"Участник {i + 1}"
-            broadcast_locked()
+        if not 0 <= i < len(state["participants"]):
+            return
+        state["participants"][i]["name"] = name or f"Участник {i + 1}"
+        save_locked()
+        snap = snapshot_locked()
+    publish(snap)
 
 
 @socketio.on("reset")
@@ -230,7 +317,9 @@ def on_reset(data=None):
     with lock:
         state.update(participants=[], current=-1, finished=False, started_at=None)
         state["bump"] += 1
-        broadcast_locked()
+        save_locked()
+        snap = snapshot_locked()
+    publish(snap)
 
 
 # ---------- страницы ----------
@@ -256,6 +345,12 @@ def page(template):
 @app.get("/")
 def control():
     return page(CONTROL_HTML)
+
+
+@app.get("/healthz")
+def healthz():
+    # Пинг от открытых страниц: не даёт бесплатному хостингу «заснуть» и позволяет странице понять, жив ли сервер
+    return "ok", 200, {"Cache-Control": "no-store", "Content-Type": "text/plain"}
 
 
 @app.get("/control")
@@ -321,6 +416,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .wordmark i{width:.62em;height:.62em;border-radius:50%;background:var(--signal);box-shadow:0 0 18px var(--signal)}
 .offline{position:fixed;left:0;right:0;top:0;z-index:100;padding:10px 16px;text-align:center;font-weight:600;background:var(--danger-bg);color:var(--danger);transform:translateY(-100%);transition:transform .25s}
 .offline.on{transform:none}
+.offbtn{margin-left:12px;border:1px solid currentColor;background:none;color:inherit;border-radius:999px;padding:4px 14px;font:inherit;font-weight:700;cursor:pointer}
 [hidden]{display:none!important}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 """
@@ -328,12 +424,25 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 # Общая логика клиента: подключение, синхронизация часов, вычисление фазы, табло.
 CLIENT_JS = r"""
 const BASE = document.documentElement.dataset.base || '/';
-const socket = io({path: BASE + 'socket.io', transports: ['websocket', 'polling']});
-let S = null, clockOffset = 0, LIVE = {level: 0, score: 0, at: -1e9};
+// tryAllTransports: если WebSocket не поднялся (прокси, сеть), соединение пойдёт обычными запросами, а не оборвётся.
+const socket = io({path: BASE + 'socket.io', transports: ['websocket', 'polling'], tryAllTransports: true,
+                   reconnectionDelay: 400, reconnectionDelayMax: 2500, timeout: 8000});
+let S = null, clockOffset = 0, bootId = null, LIVE = {level: 0, score: 0, at: -1e9};
 const offlineBar = document.getElementById('offline');
-socket.on('connect', () => offlineBar && offlineBar.classList.remove('on'));
-socket.on('disconnect', () => offlineBar && offlineBar.classList.add('on'));
-socket.on('state', s => { clockOffset = s.server_now - Date.now() / 1000; S = s; window.onState && window.onState(s); });
+if (offlineBar) {
+  const b = document.createElement('button'); b.className = 'offbtn'; b.textContent = 'Обновить страницу';
+  b.onclick = () => location.reload(); offlineBar.appendChild(b);
+}
+let downSince = 0;
+const setOffline = on => { if (offlineBar) offlineBar.classList.toggle('on', on); };
+socket.on('connect', () => { downSince = 0; setOffline(false); });
+socket.on('disconnect', () => { if (!downSince) downSince = performance.now(); setOffline(true); });
+socket.on('connect_error', () => { if (!downSince) downSince = performance.now(); setOffline(true); });
+socket.on('state', s => {
+  if (s.boot !== bootId) { bootId = s.boot; S = null; }       // сервер перезапускался: номера снимков пошли заново
+  else if (S && s.rev < S.rev) return;                         // более старый снимок обогнал новый — не откатываемся
+  clockOffset = s.server_now - Date.now() / 1000; S = s; window.onState && window.onState(s);
+});
 // Живой уровень с микрофона. В раунде подтягиваем максимум текущего участника, не дожидаясь полного состояния.
 socket.on('live', m => {
   LIVE = {level: m.level, score: m.score, at: performance.now()};
@@ -343,7 +452,22 @@ socket.on('live', m => {
   }
   window.onLive && window.onLive(LIVE);
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) socket.emit('sync'); });
+const wake = () => { if (document.hidden) return; if (socket.connected) socket.emit('sync'); else { try { socket.connect(); } catch (e) {} } };
+document.addEventListener('visibilitychange', wake);
+addEventListener('online', wake);
+addEventListener('focus', wake);
+addEventListener('pageshow', wake);
+// Пинг сервера раз в 4 минуты: хостинг не засыпает, пока открыта хотя бы одна страница.
+setInterval(() => { fetch(BASE + 'healthz', {cache: 'no-store'}).catch(() => {}); }, 240000);
+// Связи нет дольше 20 секунд, а сервер по обычному запросу отвечает: сокет «залип». Свежая страница вернёт связь,
+// состояние конкурса хранится на сервере и никуда не денется.
+setInterval(async () => {
+  if (socket.connected || document.hidden) return;
+  if (!downSince) downSince = performance.now();
+  if (performance.now() - downSince < 20000) return;
+  downSince = performance.now();
+  try { const r = await fetch(BASE + 'healthz', {cache: 'no-store'}); if (r.ok && !socket.connected) location.reload(); } catch (e) {}
+}, 5000);
 function serverNow(){ return Date.now() / 1000 + clockOffset; }
 function phaseOf(s){
   if (!s || !s.participants.length) return 'idle';
@@ -432,7 +556,7 @@ function toLevel(dbfs, trim){ return Math.max(0, Math.min(100, (dbfs - DB_LO + t
 
 const Mic = (() => {
   const TICK = 25, WIN = 8;          // замер каждые 25 мс, усреднение по 8 замерам = 200 мс
-  let ctx = null, stream = null, an = null, buf = null, timer = null, retry = null, gen = 0, wanted = false, hist = [], cfg = vmLoad();
+  let ctx = null, stream = null, an = null, buf = null, timer = null, tickWorker = null, retry = null, gen = 0, wanted = false, hist = [], cfg = vmLoad();
   const api = {running: false, error: '', note: '', label: '', deviceId: '', settings: null, sampleRate: 0,
                level: 0, dbfs: -120, suspended: false, onLevel: null, onState: null};
   const fire = () => { api.suspended = !!ctx && ctx.state !== 'running'; api.onState && api.onState(api); };
@@ -445,8 +569,24 @@ const Mic = (() => {
     if (n === 'SecurityError') return 'Микрофон работает только по HTTPS или на localhost.';
     return 'Не удалось открыть микрофон: ' + ((e && e.message) || n || 'неизвестная ошибка');
   }
-  function teardown(){
+  /* Браузер сильно замедляет обычные таймеры свёрнутого окна (до раза в секунду и реже), и замер громкости «слепнет».
+     Таймеры внутри отдельного потока (Worker) не замедляются, поэтому тикаем оттуда. Если Worker недоступен — обычный таймер. */
+  function startTimer(){
+    stopTimer();
+    try {
+      const url = URL.createObjectURL(new Blob(['setInterval(function(){postMessage(0)},' + TICK + ')'], {type: 'text/javascript'}));
+      let first = true;
+      tickWorker = new Worker(url);
+      tickWorker.onmessage = () => { if (first) { first = false; URL.revokeObjectURL(url); } measure(); };
+      tickWorker.onerror = () => { stopTimer(); timer = setInterval(measure, TICK); };
+    } catch (e) { tickWorker = null; timer = setInterval(measure, TICK); }
+  }
+  function stopTimer(){
     clearInterval(timer); timer = null;
+    if (tickWorker) { tickWorker.onmessage = tickWorker.onerror = null; tickWorker.terminate(); tickWorker = null; }
+  }
+  function teardown(){
+    stopTimer();
     if (stream) { stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); stream = null; }
     if (ctx) { ctx.onstatechange = null; ctx.close().catch(() => {}); ctx = null; }
     an = null; hist = []; api.running = false; api.level = 0; api.dbfs = -120; api.sampleRate = 0;
@@ -512,7 +652,7 @@ const Mic = (() => {
     an = ctx.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0;
     ctx.createMediaStreamSource(s).connect(an);
     buf = new Float32Array(an.fftSize); hist = [];
-    timer = setInterval(measure, TICK);     // таймер, а не кадры: замер не зависит от того, видна ли вкладка
+    startTimer();     // таймер, а не кадры: замер не зависит от того, видна ли вкладка
     api.running = true; fire(); return true;
   };
   api.stop = () => { wanted = false; gen++; clearTimeout(retry); teardown(); api.error = ''; fire(); };
@@ -642,19 +782,6 @@ h2{margin:0 0 14px;font-size:17px;font-weight:600;color:var(--mist)}
 .reset-ask .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .reset-ask .btn{padding:15px 8px;font-size:16px}
 .btn:active:not(:disabled){transform:scale(.98)}
-/* состояние микрофона */
-.mic{padding:14px 16px}
-.mic .head{display:flex;align-items:center;gap:12px}
-.mic .dot{flex:none;width:12px;height:12px;border-radius:50%;background:var(--danger)}
-.mic.ok .dot{background:var(--signal);box-shadow:0 0 12px var(--signal)}
-.mic.warn .dot{background:var(--warm);box-shadow:0 0 12px var(--warm)}
-.mic .txt{flex:1;min-width:0}
-.mic .txt b{display:block;font-weight:800}
-.mic .txt span{display:block;color:var(--mist);font-size:13px;line-height:1.35;overflow:hidden;text-overflow:ellipsis}
-.mic .lv{font-size:34px;line-height:1}
-.mic .lv small{font-family:var(--ui);font-size:13px;color:var(--mist);margin-left:3px;font-weight:600}
-.mic .bar{height:10px;border-radius:5px;background:var(--ink-2);margin-top:12px;overflow:hidden;position:relative}
-.mic .bar i{position:absolute;left:0;top:0;bottom:0;width:100%;background:var(--scale-x);clip-path:inset(0 100% 0 0)}
 .who{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .who .name{font-family:var(--display);font-size:26px;font-weight:800}
 .who .of{color:var(--mist);font-weight:600;white-space:nowrap}
@@ -687,11 +814,6 @@ h2{margin:0 0 14px;font-size:17px;font-weight:600;color:var(--mist)}
   <div class="top"><span class="wordmark"><i></i>Voice meter</span>
     <span class="links"><a class="link" href="{{ base }}screen" target="_blank" rel="noopener">Экран для гостей</a><a class="link" href="{{ base }}setup" target="_blank" rel="noopener">Setup</a></span></div>
 
-  <section class="card mic" id="mic">
-    <div class="head"><span class="dot"></span><div class="txt"><b id="micTitle">Микрофон не подключён</b><span id="micSub"></span></div><div class="lv num"><span id="lvNum">0</span><small>dB</small></div></div>
-    <div class="bar"><i id="lvBar"></i></div>
-  </section>
-
   <section class="card" id="setup">
     <h2>Сколько участников</h2>
     <div class="stepper"><button id="minusCount" aria-label="Меньше">−</button><div class="num" id="count">4</div><button id="plusCount" aria-label="Больше">+</button></div>
@@ -702,7 +824,7 @@ h2{margin:0 0 14px;font-size:17px;font-weight:600;color:var(--mist)}
   <section class="card" id="game" hidden>
     <div class="who"><span class="name" id="name"></span><span class="of" id="of"></span></div>
     <div class="status" id="status"><span class="label" id="statusLabel"></span><span class="time num" id="time"></span></div>
-    <div class="score"><div class="num" id="score">0.0</div><div class="unit" id="unit">максимум, dB</div></div>
+    <div class="score" id="scoreBox" hidden><div class="num" id="score">0.0</div><div class="unit">результат, dB</div></div>
     <div id="actions"></div>
   </section>
 
@@ -732,7 +854,7 @@ h2{margin:0 0 14px;font-size:17px;font-weight:600;color:var(--mist)}
 <script>{{ client_js|safe }}</script>
 <script>
 const $ = id => document.getElementById(id);
-let count = 4, lastKey = '', lvDisp = 0;
+let count = 4, lastKey = '';
 function setText(el, v){ v = String(v); if (el._v !== v) { el._v = v; el.textContent = v; } }   // трогаем DOM только при изменении
 function setHtml(el, h){ if (el._h !== h) { el._h = h; el.innerHTML = h; } }
 
@@ -761,7 +883,6 @@ setInterval(() => {
   if (socket.connected) socket.emit('sync');                          // живой пульс: страница никогда не «застывает» молча
   if (now - lastState > 12000) reconnect();
 }, 2000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !socket.connected) { try { socket.connect(); } catch (e) {} } });
 
 /* ---------- подтверждения без системных окон ----------
    Системные confirm() телефоны и встроенные браузеры могут молча блокировать — тогда кнопка «не реагирует».
@@ -821,37 +942,20 @@ function renderActions(ph, isLast){
   } else if (ph === 'countdown') {
     a.innerHTML = `<p class="hint">Участник готовится…</p>`;
   } else if (ph === 'play') {
-    a.innerHTML = `<p class="hint">Идёт замер. Засчитывается самый громкий момент.</p>`;
+    a.innerHTML = `<p class="hint">Идёт замер. Результат появится, когда выйдет время.</p>`;
   } else if (ph === 'timeup') {
     a.innerHTML = `<div class="stack"><button class="btn primary" data-act="next">${isLast ? 'Показать итоги' : 'Следующий участник'}</button>
       <button class="btn quiet" data-act="replay">Переиграть раунд</button></div>`;
   } else a.innerHTML = '';
 }
-function micFresh(){ return !!(S && S.mic.on) && performance.now() - LIVE.at < 1500; }
 $('actions').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   const act = b.dataset.act;
-  if (act === 'start_timer' && !micFresh()) return arm(b, 'Нет звука с микрофона. Запустить всё равно?', () => send('start_timer'));
   if (act === 'replay') return arm(b, 'Обнулить результат? Нажмите ещё раз', () => send('replay'));
   if (act) send(act);
 });
 
-function renderMic(){
-  const box = $('mic');
-  let cls = '', title, sub;
-  if (!S || !S.mic.on) { title = 'Микрофон не подключён'; sub = 'Откройте «Экран для гостей» на компьютере с микрофоном'; }
-  else if (!micFresh()) { cls = 'warn'; title = 'Нет сигнала с микрофона'; sub = 'Экран подключён, но звук не приходит. Проверьте вход в Setup'; }
-  else { cls = 'ok'; title = 'Микрофон работает'; sub = S.mic.label || 'вход по умолчанию'; }
-  const c = 'card mic ' + cls;
-  if (box.className !== c) box.className = c;
-  setText($('micTitle'), title); setText($('micSub'), sub);
-  lvDisp = micFresh() ? Math.max(LIVE.level, lvDisp - 2.5) : Math.max(0, lvDisp - 4);
-  setText($('lvNum'), Math.round(lvDisp));
-  $('lvBar').style.clipPath = `inset(0 ${100 - lvDisp}% 0 0)`;
-}
-
 function frame(){
-  renderMic();
   if (!S) return;
   const ph = phaseOf(S), p = S.participants[S.current];
   const show = (id, on) => { const el = $(id); if (el.hidden === on) el.hidden = !on; };
@@ -871,13 +975,13 @@ function frame(){
     const isLast = S.current === S.participants.length - 1;
     setText($('name'), p.name);
     setText($('of'), (S.current + 1) + ' из ' + S.participants.length);
-    setRoll($('score'), fmt1(p.score));
+    show('scoreBox', ph === 'timeup');
+    if (ph === 'timeup') setRoll($('score'), fmt1(p.score));
     const st = $('status'), r = remaining(S);
     const sc = 'status' + (ph === 'play' ? ' hot' : ph === 'timeup' ? ' end' : '');
     if (st.className !== sc) st.className = sc;
     setText($('statusLabel'), {ready:'Ждём старта', countdown:'Отсчёт', play:'Идёт замер', timeup:'Время вышло'}[ph]);
     setRoll($('time'), ph === 'countdown' ? String(Math.ceil(r)) : ph === 'timeup' ? '0:00' : fmtTime(r), {up: false});
-    setText($('unit'), ph === 'timeup' ? 'результат, dB' : 'максимум, dB');
     renderActions(ph, isLast);
   } else renderActions(ph, false);
   const done = ranking(S);
@@ -1035,7 +1139,7 @@ const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const micEnabled = params.get('mic') !== '0';     // ?mic=0 — второй экран только показывает, микрофон не слушает
 let lastView = '', lastFinalKey = '', resFor = -1;
-let lastPh = null, lastCd = null, lastTick = null, leadDone = false;
+let lastPh = null, lastCd = null;
 let lvDisp = 0, holdPk = 0, holdAt = 0, lastLocal = -1e9, localPk = 0;
 
 /* ---------- Шкала ---------- */
@@ -1079,10 +1183,11 @@ Mic.onLevel = lvl => {
   if (Mic.suspended) return;       // браузер приостановил звук: нули не отправляем, ведущий увидит «нет сигнала»
   const now = performance.now();
   lastLocal = now; pend = Math.max(pend, lvl);
-  if (now - lastSent >= 40) { lastSent = now; if (socket.connected) socket.emit('mic_level', {level: pend}); pend = 0; }
+  if (now - lastSent >= 80) { lastSent = now; if (socket.connected) socket.emit('mic_level', {level: pend}); pend = 0; }   // пик между отправками не теряется
 };
 function claim(){ if (micEnabled && Mic.running && socket.connected) socket.emit('mic_claim', {label: Mic.label}); }
-socket.on('connect', claim);
+socket.on('connect', () => { socket.emit('watch'); claim(); });   // watch — подписка на живой уровень
+if (socket.connected) socket.emit('watch');
 function updateChip(){
   const c = $('micChip'), t = $('micText');
   if (!micEnabled) { c.hidden = true; return; }
@@ -1123,11 +1228,8 @@ const Snd = (() => {
     async enable(){ ensure(); try { await ctx.resume(); } catch (e) {} return this.on; },
     tryAuto(){ ensure(); ctx.resume().catch(() => {}); return this.on; },
     // d — задержка в секундах: звук попадает в момент, когда цифра встаёт на место
-    count(d = 0){ tone(660, .16, {gain: .35, at: d}); },                                   // 5…1
-    go(d = 0){ tone(990, .5, {type: 'triangle', gain: .4, at: d}); tone(1320, .5, {gain: .2, at: d}); }, // старт
-    tick(d = 0){ tone(1150, .05, {type: 'square', gain: .09, at: d}); },                      // последние 5 секунд
+    count(d = 0){ tone(660, .16, {gain: .35, at: d}); },                                   // отсчёт 5…1, до начала замера
     gong(d = 0){ [196, 294, 392, 523].forEach((f, i) => tone(f, 2.6 - i * .3, {gain: .26 - i * .04, attack: .01, at: d})); },
-    lead(d = 0){ tone(784, .22, {type: 'triangle', gain: .3, at: d}); tone(1175, .5, {type: 'triangle', gain: .3, at: d + .13}); },  // обогнал лидера
   };
 })();
 const soundBtn = $('soundBtn');
@@ -1156,15 +1258,9 @@ function sounds(ph, p){
     const n = Math.ceil(remaining(S));
     if (n !== lastCd) { lastCd = n; if (lastPh) Snd.count(landDelay($('cdNum'))); }
   } else lastCd = null;
-  if (ph === 'play' && lastPh === 'countdown') { const t = document.querySelector('#timer .t'); Snd.go(t ? landDelay(t) : .17); }
-  if (ph === 'play') {
-    const sec = Math.ceil(remaining(S));
-    if (sec <= 5 && sec > 0 && sec !== lastTick) { lastTick = sec; const t = document.querySelector('#timer .t'); Snd.tick(t ? landDelay(t) : 0); }
-    // обогнал всех, кто уже сыграл: короткий сигнал, один раз за раунд
-    const best = Math.max(0, ...S.participants.filter(x => x.done).map(x => x.score));
-    if (!leadDone && best > 0 && p && p.score > best) { leadDone = true; Snd.lead(); }
-  } else { lastTick = null; if (ph !== 'timeup') leadDone = false; }
-  if (ph === 'timeup' && lastPh === 'play') { Snd.gong(); socket.emit('sync'); }   // sync — на случай, если итог ещё в пути
+  // Пока идёт замер, экран молчит: ни сигнала старта, ни тиканья, ни подсказок. Всё, что прозвучит рядом, попало бы в микрофон.
+  // Гонг — только после конца времени, с небольшой паузой: итог уже не принимается.
+  if (ph === 'timeup' && lastPh === 'play') { Snd.gong(.3); socket.emit('sync'); }   // sync — на случай, если итог ещё в пути
   lastPh = ph;
 }
 
