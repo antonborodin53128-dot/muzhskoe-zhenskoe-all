@@ -4,6 +4,7 @@ from werkzeug.serving import run_simple
 from balls_app import app as balls_app
 from hamster_app import app as hamster_app
 from voice_app import app as voice_app
+from note_app import app as note_app
 import io, base64
 import qrcode
 
@@ -33,7 +34,7 @@ HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 <a class="card" href="/contest/balls">ШАРИКИ</a><a class="card" href="/contest/hamster">ХОМЯК</a><a class="card" href="/contest/voice">VOICE METER</a>
 </div></div>
 <div class="section"><div class="title f">ЖЕНСКОЕ</div><div class="grid">
-<div class="card f disabled">КОНКУРС 1</div><div class="card f disabled">КОНКУРС 2</div><div class="card f disabled">КОНКУРС 3</div>
+<a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><div class="card f disabled">КОНКУРС 2</div><div class="card f disabled">КОНКУРС 3</div>
 </div></div>
 <div class="section"><div class="title mix">МУЖЧИНА VS ЖЕНЩИНА</div><div class="grid"><div class="card mix disabled">ОБЩИЙ КОНКУРС</div></div></div>
 </div></body></html>"""
@@ -80,10 +81,19 @@ def voice_menu():
         {"title":"SETUP","url":"/men/voice/setup","desc":"Выбор аудиовхода и чувствительности. Открывать на компьютере с микрофоном","class":"setup","new":True},
     ])
 
+@app.get("/contest/note")
+def note_menu():
+    return render_template_string(MENU,css=CSS,name="ТОЧНО В НОТУ",qr=qr_data(absolute("/women/note/")),actions=[
+        {"title":"ВЕДУЩИЙ","url":"/women/note/","desc":"Управление участницами, таймером и результатами"},
+        {"title":"ГОСТЕВОЙ ЭКРАН","url":"/women/note/screen","desc":"Экран для проектора с барьерами. Слушает микрофон","new":True},
+        {"title":"SETUP","url":"/women/note/setup","desc":"Выбор аудиовхода, тюнер и проверка попадания. Открывать на компьютере с микрофоном","class":"setup","new":True},
+    ])
+
 application=DispatcherMiddleware(app,{
     "/men/balls":balls_app,
     "/men/hamster":hamster_app,
     "/men/voice":voice_app,
+    "/women/note":note_app,
 })
 if __name__=="__main__":
     run_simple("0.0.0.0",5000,application,use_reloader=True)
