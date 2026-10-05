@@ -611,7 +611,7 @@ html,body{height:100%;overflow:hidden}
 <script>
 __ROLL_JS__
 __NET_JS__
-/* ---------- Фон «Огоньки»: слева нарисованные молотки (зелёные), справа рука с ноготочками (розовая) ---------- */
+/* ---------- Фон «Огоньки»: слева зелёные смайлики-мужчины, справа розовые смайлики-женщины ---------- */
 const Bg = (() => {
   const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -629,29 +629,29 @@ const Bg = (() => {
     ctx.beginPath(); ctx.arc(x + w / 2, y + w / 2, w / 2, Math.PI, 0); ctx.lineTo(x + w, y + h - w / 2);
     ctx.arc(x + w / 2, y + h - w / 2, w / 2, 0, Math.PI); ctx.closePath();
   }
-  // Молоток в единичных координатах (≈ 1,0 × 1,3), центр в (0, 0)
-  function hammer(x, y, s, rot, a){
+  // Смайлик в единичных координатах (голова радиусом .5, центр в 0,0): man — короткая стрижка, woman — длинные волосы и ресницы
+  function face(x, y, s, rot, a, man){
+    const col = man ? GREEN : PINK;
     ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
-    ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(.07, 1.3 / s);
-    ctx.strokeStyle = rgba(GREEN, a); ctx.fillStyle = rgba(GREEN, a * .28);
-    cap(-.09, -.25, .18, .95); ctx.fill(); ctx.stroke();                   // ручка
-    ctx.beginPath(); ctx.moveTo(-.46, -.6); ctx.lineTo(.3, -.6);          // боёк слева, клин справа
-    ctx.quadraticCurveTo(.62, -.62, .66, -.82); ctx.lineTo(.5, -.3); ctx.lineTo(-.46, -.3); ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    ctx.restore();
-  }
-  // Рука с ноготочками: ладонь, четыре пальца и большой; ногти закрашены плотнее
-  function hand(x, y, s, rot, a){
-    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
-    ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(.07, 1.3 / s);
-    ctx.strokeStyle = rgba(PINK, a); ctx.fillStyle = rgba(PINK, a * .28);
-    const fingers = [[-.3, -.56, .56], [-.12, -.74, .74], [.06, -.7, .7], [.24, -.5, .5]];
-    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-.34, -.02, .68, .56, .2) : ctx.rect(-.34, -.02, .68, .56); ctx.fill(); ctx.stroke();
-    fingers.forEach(f => { cap(f[0], f[1], .17, f[2]); ctx.fill(); ctx.stroke(); });
-    ctx.save(); ctx.translate(-.36, .26); ctx.rotate(-.75); cap(-.085, -.42, .17, .6); ctx.fill(); ctx.stroke(); ctx.restore();
-    ctx.fillStyle = rgba(PINK, a * .95);
-    fingers.forEach(f => { cap(f[0] + .03, f[1] + .035, .11, .15); ctx.fill(); });
-    ctx.save(); ctx.translate(-.36, .26); ctx.rotate(-.75); cap(-.055, -.385, .11, .15); ctx.fill(); ctx.restore();
+    ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(.06, 1.3 / s);
+    ctx.strokeStyle = rgba(col, a); ctx.fillStyle = rgba(col, a * .28);
+    const hair = rgba(col, a * .6);
+    if (!man) {                                                    // волосы сзади: две пряди до плеч
+      ctx.fillStyle = hair;
+      cap(-.66, -.18, .26, .98); ctx.fill(); ctx.stroke();
+      cap(.4, -.18, .26, .98); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = rgba(col, a * .28);
+    }
+    ctx.beginPath(); ctx.arc(0, 0, .5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();        // лицо
+    ctx.fillStyle = hair; ctx.beginPath();                                                 // чёлка / короткая стрижка
+    ctx.arc(0, 0, .5, Math.PI * 1.02, Math.PI * 1.98);
+    if (man) { ctx.lineTo(.46, -.2); ctx.lineTo(-.46, -.2); }
+    else { ctx.quadraticCurveTo(.3, -.34, -.12, -.12); ctx.quadraticCurveTo(-.3, -.3, -.49, -.1); }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = rgba(col, a);
+    [-.17, .17].forEach(ex => { ctx.beginPath(); ctx.arc(ex, .02, .05, 0, Math.PI * 2); ctx.fill(); });   // глаза
+    if (!man) { ctx.lineWidth = Math.max(.04, .9 / s); [-1, 1].forEach(d => { ctx.beginPath(); ctx.moveTo(d * .17 + d * .05, -.04); ctx.lineTo(d * .17 + d * .12, -.09); ctx.stroke(); }); ctx.lineWidth = Math.max(.06, 1.3 / s); }
+    ctx.beginPath(); ctx.arc(0, .1, .22, Math.PI * .18, Math.PI * .82); ctx.stroke();       // улыбка
     ctx.restore();
   }
   const rnd = () => Math.random();
@@ -673,7 +673,7 @@ const Bg = (() => {
       ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(px, py, r * 1.7, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
-      (f.man ? hammer : hand)(px, py, r, rot, a);
+      face(px, py, r * 1.3, rot, a, f.man);
     });
     requestAnimationFrame(frame);
   }
