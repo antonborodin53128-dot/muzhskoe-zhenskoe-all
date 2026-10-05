@@ -95,6 +95,11 @@ SETUP_LINK = re.compile(r'<a class="link" href="[^"]*setup"[^>]*>Setup</a>')
 OPEN_LINK = '<a class="link" id="rl-open" href="#" role="button">Правила</a>'
 
 
+BACK = ('<div id="rl-back" style="clear:both;text-align:center;padding:90px 16px 36px"><a href="/" '
+        'style="color:rgba(255,255,255,.55);font:600 13px/1.2 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;'
+        'text-decoration:underline;text-underline-offset:3px">Вернуться на страницу конкурсов</a></div>')
+
+
 def snippet(key, corner=True):
     title, say, cheat = RULES[key]
     e = html.escape
@@ -122,7 +127,7 @@ def install(app, key, in_js=False):
                 elif not in_js:
                     t2 = TOP_END.sub(lambda m: (m.group(1) or m.group(3)) + PLAIN_LINK + (m.group(2) or m.group(4)), t, count=1)
                     if t2 != t: t, inline = t2, True                    # нет такой ссылки: «Правила» в конец шапки
-                t = t.replace("</body>", snippet(key, corner=not inline) + "</body>", 1)
+                t = t.replace("</body>", BACK + snippet(key, corner=not inline) + "</body>", 1)
                 resp.set_data(t)
         except Exception:
             pass
