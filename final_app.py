@@ -11,6 +11,7 @@ from flask_socketio import SocketIO, emit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AUDIO_DIR = os.path.join(HERE, "final_audio")
+STATIC_DIR = os.path.join(HERE, "final_static")
 STATE_FILE = os.environ.get("FINAL_STATE_FILE", os.path.join(tempfile.gettempdir(), "final_state.json"))
 TTL = 6 * 3600
 
@@ -228,6 +229,11 @@ def screen():
 @app.route("/healthz")
 def healthz():
     r = make_response("ok"); r.headers["Cache-Control"] = "no-store"; return r
+
+
+@app.route("/font/faces.ttf")
+def faces_font():
+    return send_from_directory(STATIC_DIR, "noto-emoji-faces.ttf", mimetype="font/ttf", max_age=86400, conditional=True)
 
 
 @app.route("/audio/<name>")
@@ -549,6 +555,7 @@ SCREEN_HTML = r"""<!doctype html>
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 <style>__CSS__
 __ROLL_CSS__
+@font-face{font-family:"FinalFaces";src:url("__BASE__font/faces.ttf") format("truetype")}
 html,body{height:100%;overflow:hidden}
 #bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
 .screen{position:relative;z-index:1;height:100vh;display:grid;grid-template-columns:minmax(150px,19vw) 1fr minmax(150px,19vw);gap:2vw;padding:3vh 2.4vw 4vh}
@@ -611,7 +618,7 @@ html,body{height:100%;overflow:hidden}
 <script>
 __ROLL_JS__
 __NET_JS__
-/* ---------- Фон «Огоньки»: слева зелёные смайлики-мужчины, справа розовые смайлики-женщины ---------- */
+/* ---------- Фон «Огоньки»: слева зелёные лица мужчин, справа розовые лица женщин (монохромный шрифт Noto Emoji) ---------- */
 const Bg = (() => {
   const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -629,35 +636,22 @@ const Bg = (() => {
     ctx.beginPath(); ctx.arc(x + w / 2, y + w / 2, w / 2, Math.PI, 0); ctx.lineTo(x + w, y + h - w / 2);
     ctx.arc(x + w / 2, y + h - w / 2, w / 2, 0, Math.PI); ctx.closePath();
   }
-  // Смайлик в единичных координатах (голова радиусом .5, центр в 0,0): man — короткая стрижка, woman — длинные волосы и ресницы
-  function face(x, y, s, rot, a, man){
-    const col = man ? GREEN : PINK;
-    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
-    ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(.06, 1.3 / s);
-    ctx.strokeStyle = rgba(col, a); ctx.fillStyle = rgba(col, a * .28);
-    const hair = rgba(col, a * .6);
-    if (!man) {                                                    // волосы сзади: две пряди до плеч
-      ctx.fillStyle = hair;
-      cap(-.66, -.18, .26, .98); ctx.fill(); ctx.stroke();
-      cap(.4, -.18, .26, .98); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = rgba(col, a * .28);
-    }
-    ctx.beginPath(); ctx.arc(0, 0, .5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();        // лицо
-    ctx.fillStyle = hair; ctx.beginPath();                                                 // чёлка / короткая стрижка
-    ctx.arc(0, 0, .5, Math.PI * 1.02, Math.PI * 1.98);
-    if (man) { ctx.lineTo(.46, -.2); ctx.lineTo(-.46, -.2); }
-    else { ctx.quadraticCurveTo(.3, -.34, -.12, -.12); ctx.quadraticCurveTo(-.3, -.3, -.49, -.1); }
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = rgba(col, a);
-    [-.17, .17].forEach(ex => { ctx.beginPath(); ctx.arc(ex, .02, .05, 0, Math.PI * 2); ctx.fill(); });   // глаза
-    if (!man) { ctx.lineWidth = Math.max(.04, .9 / s); [-1, 1].forEach(d => { ctx.beginPath(); ctx.moveTo(d * .17 + d * .05, -.04); ctx.lineTo(d * .17 + d * .12, -.09); ctx.stroke(); }); ctx.lineWidth = Math.max(.06, 1.3 / s); }
-    ctx.beginPath(); ctx.arc(0, .1, .22, Math.PI * .18, Math.PI * .82); ctx.stroke();       // улыбка
+  // Одноцветные лица: монохромный шрифт Noto Emoji (OFL). Мужчины: 👨 🧔, женщины: 👩 👰
+  const FACES = {man: ['\u{1F468}', '\u{1F9D4}'], woman: ['\u{1F469}', '\u{1F470}']};
+  let fontReady = false;
+  if (document.fonts && document.fonts.load) document.fonts.load('40px FinalFaces', '\u{1F468}\u{1F469}\u{1F9D4}\u{1F470}').then(() => { fontReady = true; }).catch(() => {});
+  function face(x, y, s, rot, a, man, kind){
+    if (!fontReady) return;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+    ctx.fillStyle = rgba(man ? GREEN : PINK, a); ctx.font = `${s * 1.7}px FinalFaces`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(FACES[man ? 'man' : 'woman'][kind], 0, 0);
     ctx.restore();
   }
   const rnd = () => Math.random();
   const icons = Array.from({length: 22}, (_, i) => ({
-    man: i % 2 === 0, x: rnd(), y: rnd(), r: 30 + rnd() * 40, v: .012 + rnd() * .024, a: .16 + rnd() * .16,
-    w: rnd() * 6, rot: (rnd() - .5) * .9, rs: .25 + rnd() * .4,
+    man: i % 2 === 0, x: rnd(), y: rnd(), r: 30 + rnd() * 40, v: .012 + rnd() * .024, a: .14 + rnd() * .14,
+    w: rnd() * 6, rot: (rnd() - .5) * .6, rs: .25 + rnd() * .4, kind: rnd() < .5 ? 0 : 1,
   }));
   const t0 = performance.now();
   function frame(now){
@@ -673,7 +667,7 @@ const Bg = (() => {
       ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(px, py, r * 1.7, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
-      face(px, py, r * 1.3, rot, a, f.man);
+      face(px, py, r, rot, a * .9, f.man, f.kind);
     });
     requestAnimationFrame(frame);
   }
