@@ -60,6 +60,7 @@ STATE_TTL = 6 * 3600
 BOOT = secrets.token_hex(4)   # меняется при каждом запуске: клиенты понимают, что номера снимков пошли заново
 
 app = Flask(__name__)
+import rules; rules.install(app, "diktant")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", ping_interval=15, ping_timeout=25)
 
 # ВАЖНО. socketio.emit() может прямо внутри себя закрыть «протухшее» соединение (например, свёрнутое окно)

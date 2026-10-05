@@ -21,6 +21,7 @@ ROUND_SECONDS = int(os.environ.get("ROUND_SECONDS", 40))
 MAX_PARTICIPANTS = 30
 
 app = Flask(__name__)
+import rules; rules.install(app, "balls")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 lock = Lock()
 

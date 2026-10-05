@@ -41,6 +41,7 @@ NAME = {"man": "Man", "woman": "Woman"}
 AUDIO_NAME = re.compile(r"^[mw]_[qa]\.mp3$")
 
 app = Flask(__name__)
+import rules; rules.install(app, "final")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", ping_interval=15, ping_timeout=25)
 lock = RLock()
 BOOT = secrets.token_hex(4)

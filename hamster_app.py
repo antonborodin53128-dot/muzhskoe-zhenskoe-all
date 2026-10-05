@@ -26,6 +26,7 @@ MAX_PARTICIPANTS = 30
 LETTERS = "ABCDEFGHIJKLMNPQRSTUVWXYZ"
 
 app = Flask(__name__)
+import rules; rules.install(app, "hamster")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 lock = Lock()
 
