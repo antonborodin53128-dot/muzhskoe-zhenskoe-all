@@ -62,7 +62,10 @@ def new_dice():
 def dice_recalc(d):
     """Состояние игроков и победитель считаются заново из журнала бросков (так «отменить последнее» не ломает счёт)."""
     d["p"] = {w: {"rolls": [], "total": 0, "stand": False, "bust": False} for w in WHO}
+    forced = False
     for kind, w, v in d["ev"]:
+        if kind == "f":
+            forced = True; continue
         p = d["p"][w]
         if kind == "r":
             v = sum(v); p["rolls"].append(v); p["total"] += v
@@ -74,6 +77,8 @@ def dice_recalc(d):
     if m["bust"] or f["bust"]:
         d["winner"] = "woman" if m["bust"] else "man"
     elif m["stand"] and f["stand"]:
+        d["winner"] = "draw" if m["total"] == f["total"] else ("man" if m["total"] > f["total"] else "woman")
+    elif forced:                      # «Завершить игру»: победитель по очкам, которые уже есть
         d["winner"] = "draw" if m["total"] == f["total"] else ("man" if m["total"] > f["total"] else "woman")
     else:
         d["winner"] = None
@@ -182,6 +187,9 @@ def apply(c):
             dice_recalc(d)
         elif a == "stand" and d["turn"] and d["p"][d["turn"]]["total"] > 0 and d["winner"] is None:
             d["ev"].append(["s", d["turn"], 0]); d["turn"], d["armed"], d["shaking"] = None, False, False
+            dice_recalc(d)
+        elif a == "dice_finish" and d["winner"] is None:
+            d["ev"].append(["f", "man", 0]); d["turn"], d["armed"], d["shaking"] = None, False, False
             dice_recalc(d)
         elif a == "undo" and d["ev"]:
             d["ev"].pop(); d["turn"], d["armed"], d["shaking"] = None, False, False
@@ -480,7 +488,7 @@ __NET_JS__
 const CATS = __CATS__;
 const CATBY = Object.fromEntries(CATS.map(c => [c.id, c]));
 const app = document.getElementById('app');
-let ask = 0, shakeOn = false, shakeNeeded = false, lastKey = '';
+let finAsk = 0, ask = 0, shakeOn = false, shakeNeeded = false, lastKey = '';
 const sym = r => r === 'ok' ? '✓' : r === 'bad' ? '✗' : '–';
 function chips(r){ return ['man', 'woman'].map(w => `<i class="chip ${cls(w)} ${r[w] || ''}">${w === 'man' ? 'M' : 'W'} ${sym(r[w])}</i>`).join(''); }
 function topBar(){ return `<div class="top"><span class="wordmark"><i></i>Финал</span><a class="link" href="${BASE}screen" target="_blank" rel="noopener">Экран для гостей</a></div>`; }
@@ -542,12 +550,13 @@ function viewDice(s){
   }
   if (!d.shaking) h += `<button class="btn quiet" data-act="undo" ${d.ev.length ? '' : 'disabled'}>↶ Отменить последнее</button>
     <button class="btn quiet" data-act="dice_start">Начать заново</button><button class="btn quiet" data-act="back">К категориям</button>`;
+  if (!d.shaking && !d.armed && !d.winner) h += `<button class="btn quiet" data-act="dice_finish">${finAsk ? 'Точно завершить? Нажмите ещё раз' : 'Завершить игру'}</button>`;
   return h;
 }
 function render(){
   if (!S) return;
   try {
-    const key = JSON.stringify([S.mode, S.cur && [S.cur.cat, S.cur.who, S.cur.started_at], S.results, S.dice, S.pick, ask > 0, ask && Date.now() - ask > 700, shakeOn, shakeNeeded, S.score]);
+    const key = JSON.stringify([S.mode, S.cur && [S.cur.cat, S.cur.who, S.cur.started_at], S.results, S.dice, S.pick, ask > 0, ask && Date.now() - ask > 700, finAsk, shakeOn, shakeNeeded, S.score]);
     if (key === lastKey) return; lastKey = key;
     app.innerHTML = S.mode === 'q' && S.cur ? viewQuestion(S) : S.mode === 'dice' && S.dice ? viewDice(S) : viewMenu(S);
     tick();
@@ -608,6 +617,7 @@ app.addEventListener('click', e => {
   else if (a === 'dice_start') send({a: 'dice_start'});
   else if (a === 'dice_pick') send({a: 'dice_pick', who: b.dataset.who || null});
   else if (a === 'undo') send({a: 'undo'});
+  else if (a === 'dice_finish') { if (finAsk) { finAsk = 0; send({a: 'dice_finish'}); } else { finAsk = 1; render(); setTimeout(() => { finAsk = 0; render(); }, 4000); } }
   else if (a === 'roll') rollNow();
   else if (a === 'stand') send({a: 'stand'});
   else if (a === 'shake') { if (shakeOn) startShake(); else enableShake(startShake); }
