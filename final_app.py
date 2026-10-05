@@ -4,7 +4,7 @@
 гостям он показывается после оценки. За верный ответ — 1 очко. Если счёт равный — игра «21 очко» (два кубика, бросок тряской телефона).
 Тексты вопросов и ответов — в блоке CATS ниже, их можно править без изменения остального кода.
 """
-import os, re, json, time, random, secrets, tempfile
+import os, re, json, time, random, secrets, tempfile, hashlib
 from threading import RLock
 from flask import Flask, request, make_response, send_from_directory, abort
 from flask_socketio import SocketIO, emit
@@ -78,7 +78,7 @@ def snapshot_locked():
                    qfile=side.get("qfile"), afile=side.get("afile"))
         if cur["revealed"]:
             pub["a"] = side["a"]
-    return {"rev": state["rev"], "boot": BOOT, "server_now": time.time(), "mode": state["mode"], "pick": state.get("pick"), "cur": pub,
+    return {"rev": state["rev"], "boot": BOOT, "ver": VER, "server_now": time.time(), "mode": state["mode"], "pick": state.get("pick"), "cur": pub,
             "dice": state["dice"], "results": state["results"], "score": score_locked(),
             "cats": [{"id": c["id"], "title": c["title"], "icon": c["icon"], "time": c["time"]} for c in CATS]}
 
@@ -206,7 +206,7 @@ def base_path():
 
 
 def page(tpl):
-    html = (tpl.replace("__BASE__", base_path()).replace("__CSS__", FINAL_CSS)
+    html = (tpl.replace("__VER__", VER).replace("__BASE__", base_path()).replace("__CSS__", FINAL_CSS)
             .replace("__ROLL_CSS__", ROLL_CSS).replace("__ROLL_JS__", ROLL_JS).replace("__NET_JS__", NET_JS)
             .replace("__CATS__", json.dumps(CATS, ensure_ascii=False).replace("</", "<\\/")))
     r = make_response(html)
@@ -352,7 +352,15 @@ const setOffline = on => { if (offlineBar) offlineBar.classList.toggle('on', on)
 socket.on('connect', () => { downSince = 0; setOffline(false); });
 socket.on('disconnect', () => { if (!downSince) downSince = performance.now(); setOffline(true); });
 socket.on('connect_error', () => { if (!downSince) downSince = performance.now(); setOffline(true); });
+// После выкладки новой версии открытая страница сама обновляется (иначе у неё остаётся старый код).
+function checkVer(s){
+  const mine = document.documentElement.dataset.ver;
+  if (!s.ver || !mine || s.ver === mine) return false;
+  try { const t = +sessionStorage.getItem('finalReloadAt') || 0; if (Date.now() - t < 8000) return false; sessionStorage.setItem('finalReloadAt', String(Date.now())); } catch (e) {}
+  location.reload(); return true;
+}
 socket.on('state', s => {
+  if (checkVer(s)) return;
   if (s.boot !== bootId) { bootId = s.boot; S = null; offsets.length = 0; }
   else if (S && s.rev < S.rev) return;
   offsets.push(s.server_now - Date.now() / 1000); if (offsets.length > 12) offsets.shift();
@@ -381,7 +389,7 @@ const other = w => w === 'man' ? 'woman' : 'man';
 # Пульт ведущего
 # ======================================================================
 CONTROL_HTML = r"""<!doctype html>
-<html lang="ru" data-base="__BASE__">
+<html lang="ru" data-base="__BASE__" data-ver="__VER__">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0d0b0c"><title>Финал · пульт</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -564,7 +572,7 @@ app.addEventListener('click', e => {
 # Экран для гостей
 # ======================================================================
 SCREEN_HTML = r"""<!doctype html>
-<html lang="ru" data-base="__BASE__">
+<html lang="ru" data-base="__BASE__" data-ver="__VER__">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Финал</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;600;800&family=Unbounded:wght@600;800;900&family=Nunito:wght@800;900&display=swap" rel="stylesheet">
@@ -811,3 +819,7 @@ window.onState = render;
 </script>
 </body></html>
 """
+
+
+# Версия страниц: меняется при любой правке кода/вёрстки, клиенты по ней понимают, что пора обновиться.
+VER = hashlib.md5((CONTROL_HTML + SCREEN_HTML + FINAL_CSS + NET_JS + ROLL_JS + ROLL_CSS + json.dumps(CATS, ensure_ascii=False)).encode("utf-8")).hexdigest()[:8]
