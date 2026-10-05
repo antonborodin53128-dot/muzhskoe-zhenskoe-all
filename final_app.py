@@ -231,9 +231,14 @@ def healthz():
     r = make_response("ok"); r.headers["Cache-Control"] = "no-store"; return r
 
 
-@app.route("/font/faces.ttf")
-def faces_font():
-    return send_from_directory(STATIC_DIR, "noto-emoji-faces.ttf", mimetype="font/ttf", max_age=86400, conditional=True)
+ICON_NAME = re.compile(r"^[0-9A-F]{4,5}\.svg$")
+
+
+@app.route("/icons/<name>")
+def icon(name):
+    if not ICON_NAME.match(name):
+        abort(404)
+    return send_from_directory(os.path.join(STATIC_DIR, "icons"), name, mimetype="image/svg+xml", max_age=86400, conditional=True)
 
 
 @app.route("/audio/<name>")
@@ -427,6 +432,7 @@ h2{margin:6px 0 0;font-size:16px;font-weight:600;color:var(--mist)}
 <body>
 <div class="offline" id="offline">Нет связи с сервером — переподключаюсь…</div>
 <main class="app" id="app"></main>
+<div class="hint" style="text-align:center;padding:0 0 18px;font-size:12px;opacity:.6">Значки фона: OpenMoji, CC BY-SA 4.0</div>
 <script>
 __ROLL_JS__
 __NET_JS__
@@ -555,7 +561,6 @@ SCREEN_HTML = r"""<!doctype html>
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 <style>__CSS__
 __ROLL_CSS__
-@font-face{font-family:"FinalFaces";src:url("__BASE__font/faces.ttf") format("truetype")}
 html,body{height:100%;overflow:hidden}
 #bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
 .screen{position:relative;z-index:1;height:100vh;display:grid;grid-template-columns:minmax(150px,19vw) 1fr minmax(150px,19vw);gap:2vw;padding:3vh 2.4vw 4vh}
@@ -618,7 +623,7 @@ html,body{height:100%;overflow:hidden}
 <script>
 __ROLL_JS__
 __NET_JS__
-/* ---------- Фон «Огоньки»: слева зелёные лица мужчин, справа розовые лица женщин (монохромный шрифт Noto Emoji) ---------- */
+/* ---------- Фон «Огоньки»: слева зелёные значки «мужского» (молоток, галстук, мяч…), справа розовые «женского» (помада, туфля, платье…) ---------- */
 const Bg = (() => {
   const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -636,22 +641,31 @@ const Bg = (() => {
     ctx.beginPath(); ctx.arc(x + w / 2, y + w / 2, w / 2, Math.PI, 0); ctx.lineTo(x + w, y + h - w / 2);
     ctx.arc(x + w / 2, y + h - w / 2, w / 2, 0, Math.PI); ctx.closePath();
   }
-  // Одноцветные лица: монохромный шрифт Noto Emoji (OFL). Мужчины: 👨 🧔, женщины: 👩 👰
-  const FACES = {man: ['\u{1F468}', '\u{1F9D4}'], woman: ['\u{1F469}', '\u{1F470}']};
-  let fontReady = false;
-  if (document.fonts && document.fonts.load) document.fonts.load('40px FinalFaces', '\u{1F468}\u{1F469}\u{1F9D4}\u{1F470}').then(() => { fontReady = true; }).catch(() => {});
+  // Значки на тему «мужское / женское» (OpenMoji, контурные, CC BY-SA 4.0). Красим в цвет половины экрана.
+  const SETS = {
+    man: ['1F528', '1F454', '26BD', '1F697', '1F37A', '1F527', '1F4AA', '231A'],      // молоток, галстук, мяч, машина, пиво, ключ, бицепс, часы
+    woman: ['1F484', '1F460', '1F457', '1F485', '1F45C', '1F48D', '1F338', '1F48B'],  // помада, туфля, платье, лак, сумочка, кольцо, цветок, поцелуй
+  };
+  const TINT = {man: [], woman: []};
+  function tinted(img, col){
+    const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+    x.drawImage(img, 0, 0, 128, 128); x.globalCompositeOperation = 'source-in'; x.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`; x.fillRect(0, 0, 128, 128);
+    return c;
+  }
+  ['man', 'woman'].forEach(w => SETS[w].forEach((code, i) => {
+    const img = new Image(); img.onload = () => { TINT[w][i] = tinted(img, w === 'man' ? GREEN : PINK); };
+    img.src = BASE + 'icons/' + code + '.svg';
+  }));
   function face(x, y, s, rot, a, man, kind){
-    if (!fontReady) return;
-    ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
-    ctx.fillStyle = rgba(man ? GREEN : PINK, a); ctx.font = `${s * 1.7}px FinalFaces`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(FACES[man ? 'man' : 'woman'][kind], 0, 0);
+    const im = TINT[man ? 'man' : 'woman'][kind]; if (!im) return;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.globalAlpha = Math.max(0, Math.min(1, a));
+    ctx.drawImage(im, -s * .8, -s * .8, s * 1.6, s * 1.6);
     ctx.restore();
   }
   const rnd = () => Math.random();
   const icons = Array.from({length: 22}, (_, i) => ({
     man: i % 2 === 0, x: rnd(), y: rnd(), r: 30 + rnd() * 40, v: .012 + rnd() * .024, a: .14 + rnd() * .14,
-    w: rnd() * 6, rot: (rnd() - .5) * .6, rs: .25 + rnd() * .4, kind: rnd() < .5 ? 0 : 1,
+    w: rnd() * 6, rot: (rnd() - .5) * .6, rs: .25 + rnd() * .4, kind: Math.floor(rnd() * 8),
   }));
   const t0 = performance.now();
   function frame(now){
@@ -667,7 +681,7 @@ const Bg = (() => {
       ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(px, py, r * 1.7, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
-      face(px, py, r, rot, a * .9, f.man, f.kind);
+      face(px, py, r * 1.15, rot, a * 2.3, f.man, f.kind);
     });
     requestAnimationFrame(frame);
   }
