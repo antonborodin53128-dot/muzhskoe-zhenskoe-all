@@ -637,7 +637,7 @@ html,body{height:100%;overflow:hidden}
 .sidecol.on{border-color:var(--c);box-shadow:0 0 60px var(--c-soft)}
 .sidecol .nm{font-family:var(--display);font-weight:900;font-size:clamp(22px,2.6vw,50px);color:var(--c)}
 .sidecol .num{font-size:clamp(70px,12vw,230px);line-height:1;color:var(--c);filter:drop-shadow(0 0 28px var(--c-soft));--roll-ms:800ms}
-.sidecol .un{color:var(--mist);font-weight:600;font-size:clamp(13px,1.2vw,22px)}
+.sidecol .un{text-align:center;padding:0 .8vw;line-height:1.35;color:var(--mist);font-weight:600;font-size:clamp(13px,1.2vw,22px)}
 .stage{display:flex;flex-direction:column;min-height:0;align-items:center;justify-content:center;gap:2vh;text-align:center}
 .stage .wordmark{font-size:clamp(20px,2.2vw,40px)}
 .tiles{display:flex;flex-direction:column;gap:1.8vh;width:min(780px,100%)}
@@ -688,7 +688,7 @@ html,body{height:100%;overflow:hidden}
 .pl .hist{font-size:clamp(22px,2.6vw,48px);min-height:1.3em;word-break:break-all}
 .duel{transition:opacity .35s}.stage .duel.fade{opacity:0 !important;animation:none}
 .duel .pl .sum{font-size:clamp(44px,6.5vh,110px)}.duel .pl .hist{min-height:1.2em}
-.box{flex:none;--bx:min(70vw,40vh);--s:calc(var(--bx) * .21);width:var(--bx);height:var(--bx);position:relative;margin:1.4vh 0;border-radius:2%;border:4px solid rgba(255,255,255,.55);background:rgba(10,12,11,.5);box-shadow:0 0 40px rgba(0,0,0,.4);transition:box-shadow .08s,border-color .08s}
+.box{flex:none;--bx:min(70vw,38vh);--s:calc(var(--bx) * .21);width:var(--bx);height:var(--bx);position:relative;margin:1.4vh 0;border-radius:2%;border:4px solid rgba(255,255,255,.55);background:rgba(10,12,11,.5);box-shadow:0 0 40px rgba(0,0,0,.4);transition:box-shadow .08s,border-color .08s}
 .box.hit{border-color:#fff;box-shadow:0 0 50px rgba(255,255,255,.55)}
 .slot{position:absolute;left:50%;top:50%;transform-origin:center;width:var(--s);height:var(--s);margin:calc(var(--s) / -2) 0 0 calc(var(--s) / -2)}
 .die3{width:100%;height:100%;perspective:900px;position:relative}
@@ -702,12 +702,12 @@ html,body{height:100%;overflow:hidden}
 @keyframes drop{0%{transform:translateY(-130%) scale(1.3)}38%{transform:translateY(0) scale(1)}52%{transform:translateY(-32%)}66%{transform:translateY(0)}78%{transform:translateY(-10%)}100%{transform:translateY(0)}}
 @keyframes jit{0%{transform:translate(-14px,6px)}25%{transform:translate(12px,-10px)}50%{transform:translate(-8px,-6px)}75%{transform:translate(14px,9px)}100%{transform:translate(-14px,6px)}}
 @keyframes spin3{0%{transform:rotateX(20deg) rotateY(0) rotateZ(0)}33%{transform:rotateX(140deg) rotateY(110deg) rotateZ(40deg)}66%{transform:rotateX(250deg) rotateY(230deg) rotateZ(-30deg)}100%{transform:rotateX(380deg) rotateY(360deg) rotateZ(0)}}
-.dres{font-family:var(--display);font-weight:900;font-size:clamp(34px,7vw,130px);line-height:1;color:var(--chalk);text-align:center}
+.dres{font-family:var(--display);font-weight:900;font-size:clamp(30px,4.6vw,90px);line-height:1;white-space:nowrap;color:var(--chalk);text-align:center}
 .dres span{color:var(--c);font-size:.55em;margin-right:.2em}
 .dres small{display:block;font-size:.4em;color:var(--mist);font-weight:700;margin-top:.1em}
 .dres b{font-size:1.5em;color:var(--c);text-shadow:0 0 40px var(--c-soft)}
-.dres.late,.final.late{opacity:0;animation:popin .45s 1.15s cubic-bezier(.2,1.4,.3,1) forwards}
-@keyframes popin{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+.dres,.final{transition:opacity .35s,transform .45s cubic-bezier(.2,1.4,.3,1)}
+.stage .dres.hold,.stage .final.hold{opacity:0 !important;transform:scale(.6);animation:none}
 .dstat{font-family:var(--display);font-weight:800;font-size:clamp(22px,3vw,56px);color:var(--c);text-align:center}
 .startov{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:radial-gradient(80% 80% at 50% 50%,rgba(6,12,9,.9),rgba(8,6,8,.97));backdrop-filter:blur(10px);transition:opacity .5s}
 .startbox{display:flex;flex-direction:column;align-items:center;gap:3.2vh;text-align:center;padding:0 5vw}
@@ -721,9 +721,9 @@ html,body{height:100%;overflow:hidden}
 <canvas id="bg"></canvas>
 <div class="offline" id="offline">Нет связи с сервером — переподключаюсь…</div>
 <main class="screen">
-  <div class="sidecol m" id="sm"><div class="nm">Man</div><div class="num" id="nm">0</div><div class="un">очков</div></div>
+  <div class="sidecol m" id="sm"><div class="nm">Man</div><div class="num" id="nm">0</div><div class="un" id="um">очков</div></div>
   <section class="stage" id="stage"></section>
-  <div class="sidecol w" id="sw"><div class="nm">Woman</div><div class="num" id="nw">0</div><div class="un">очков</div></div>
+  <div class="sidecol w" id="sw"><div class="nm">Woman</div><div class="num" id="nw">0</div><div class="un" id="uw">очков</div></div>
 </main>
 <div class="startov" id="startov"><div class="startbox">
   <div class="wordmark"><i></i>Финал</div>
@@ -964,16 +964,34 @@ function physSync(d){
     physRun();
   } else if (phys.mode === 'settle') physRun();
 }
+let dropUntil = 0, sideTimer = 0, winKey = '';
 function diceHtml(s){
-  const d = s.dice, fresh = prevRoll !== -1 && d.seq !== prevRoll;
-  const pl = w => { const p = d.p[w]; return `<div class="pl ${cls(w)} ${d.turn === w && !d.winner ? 'turn' : ''}"><div class="nm">${WN[w]}</div><div class="num sum">${p.total}</div>
-    <div class="st">${p.bust ? 'ПЕРЕБОР!' : p.stand ? 'хватит' : d.turn === w ? 'бросает…' : 'ждёт'}</div><div class="hist">${p.rolls.join(' + ')}</div></div>`; };
+  const d = s.dice, hold = (prevRoll !== -1 && d.seq !== prevRoll) || phys.mode !== 'idle' || performance.now() < dropUntil;
   let info = '';
-  if (d.armed) info = `<div class="dstat ${cls(d.turn)}">${WN[d.turn]} ${d.shaking ? 'трясёт кубики…' : 'трясите телефон'}</div>`;
-  else if (d.last && !d.turn) info = `<div class="dres ${cls(d.last_who)} ${fresh ? 'late' : ''}"><span>${WN[d.last_who]}</span> выпало <b>${d.last[0] + d.last[1]}</b><small>${d.last[0]} + ${d.last[1]}</small></div>`;
-  else if (d.turn) info = `<div class="dstat ${cls(d.turn)}">${WN[d.turn]} бросает</div>`;
-  const win = d.winner ? `<div class="final ${d.winner === 'man' ? 'm' : d.winner === 'woman' ? 'w' : ''} ${fresh ? 'late' : ''}">${d.winner === 'draw' ? 'Ничья — переигрываем' : 'Победил ' + WN[d.winner] + '!'}</div>` : '';
-  return `<div class="cattitle"><span class="ic">🎲</span>Бонус игра</div><div class="duel ${d.armed ? 'fade' : ''}">${pl('man')}${pl('woman')}</div>${cubeHtml(d.last || [5, 3])}${d.winner ? win : info}`;
+  if (d.armed) info = `<div class="dstat ${cls(d.turn)}">${WN[d.turn]} бросает кости</div>`;
+  else if (d.last && !d.turn) info = `<div class="dres ${cls(d.last_who)} ${hold ? 'hold' : ''}"><span>${WN[d.last_who]}</span> выпало <b>${d.last[0] + d.last[1]}</b><small>${d.last[0]} + ${d.last[1]}</small></div>`;
+  else if (d.turn) info = `<div class="dstat ${cls(d.turn)}">${WN[d.turn]} бросает кости</div>`;
+  const win = d.winner ? `<div class="final ${d.winner === 'man' ? 'm' : d.winner === 'woman' ? 'w' : ''} ${hold ? 'hold' : ''}">${d.winner === 'draw' ? 'Ничья — переигрываем' : 'Победил ' + WN[d.winner] + '!'}</div>` : '';
+  return `<div class="cattitle"><span class="ic">🎲</span>Бонус игра</div>${cubeHtml(d.last || [5, 3])}${d.last && d.winner ? info + win : info || win}`;
+}
+/* В бонус игре боковые табло показывают результаты кубиков, а не общий счёт; новый бросок появляется, когда кубики улеглись. */
+function sideUpdate(){
+  const s = S; if (!s) return;
+  const nm = document.getElementById('nm'), nw = document.getElementById('nw'), um = document.getElementById('um'), uw = document.getElementById('uw');
+  clearTimeout(sideTimer);
+  if (s.mode === 'dice' && s.dice) {
+    const d = s.dice;
+    if (phys.mode !== 'idle' || performance.now() < dropUntil) { sideTimer = setTimeout(sideUpdate, 250); return; }
+    stage.querySelectorAll('.hold').forEach(e => e.classList.remove('hold'));
+    const txt = (p, t) => `${p.bust ? 'ПЕРЕБОР!' : p.stand ? 'хватит' : t ? 'бросает…' : 'ждёт'}<br>${p.rolls.join(' + ')}`;
+    setRoll(nm, d.p.man.total); setRoll(nw, d.p.woman.total);
+    um.innerHTML = txt(d.p.man, d.turn === 'man'); uw.innerHTML = txt(d.p.woman, d.turn === 'woman');
+    const wk = d.winner ? d.winner + ':' + d.ev.length : '';
+    if (wk && wk !== winKey && unlocked) sfx.win();
+    winKey = wk;
+  } else {
+    setRoll(nm, s.score.man); setRoll(nw, s.score.woman); um.textContent = uw.textContent = 'очков'; winKey = '';
+  }
 }
 /* Анимация выбора: категория «пробегает» по плиткам и останавливается на выбранной; затем выбранный игрок (Man/Woman) вспыхивает. */
 let busyUntil = 0, busyTimer = null, lastView = 'menu', sweptKey = '', choseKey = '';
@@ -1001,7 +1019,7 @@ function render(){
   try {
     document.getElementById('sm').classList.toggle('on', !!(s.cur && s.cur.who === 'man') || (s.dice && !s.dice.winner && s.dice.turn === 'man'));
     document.getElementById('sw').classList.toggle('on', !!(s.cur && s.cur.who === 'woman') || (s.dice && !s.dice.winner && s.dice.turn === 'woman'));
-    setRoll(document.getElementById('nm'), s.score.man); setRoll(document.getElementById('nw'), s.score.woman);
+    sideUpdate();
     const key = JSON.stringify([s.mode, s.pick, s.cur && [s.cur.cat, s.cur.who, s.cur.revealed, s.cur.started_at, s.cur.audio && s.cur.audio.kind], s.results, s.dice, s.score]);
     if (performance.now() < busyUntil) return;                 // идёт анимация выбора: итог покажем сразу после неё
     if (key !== lastKey) {
@@ -1028,14 +1046,15 @@ function render(){
           if (prevRoll !== -1 && d.last && !wasLive) {          // бросок без тряски: кубик падает в квадрат
             stage.querySelectorAll('.cube3').forEach((cube, i) => { cube.style.transition = 'none'; cube.style.transform = poseCss(d.last[i], -1); void cube.offsetWidth; cube.style.transition = ''; cube.style.transform = poseCss(d.last[i]); });
             stage.querySelectorAll('.die3').forEach((die, i) => { die.style.animationDelay = (i * .12) + 's'; die.classList.add('drop'); });
+            dropUntil = performance.now() + 1400;
             if (unlocked) { sfx.roll(); setTimeout(sfx.roll, 450); }
           }
-          if (d.winner && unlocked) setTimeout(sfx.win, wasLive ? 2300 : 1500);
           prevRoll = d.seq;
         }
         physSync(d);
         if (d.shaking && !rattle) rattle = setInterval(() => { if (unlocked) sfx.rattle(); }, 230);
         if (!d.shaking && rattle) { clearInterval(rattle); rattle = 0; }
+        sideUpdate();
       } else { prevRoll = -1; if (rattle) { clearInterval(rattle); rattle = 0; } }
     }
     playFrom(s);
