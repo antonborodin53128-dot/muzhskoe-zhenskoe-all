@@ -1,7 +1,7 @@
 """«Финал» — общий конкурс Man vs Woman.
 5 категорий (Фильмы, Поиск предмета, Загадки, Музыка, Математика): в каждой сначала отвечает Man, потом Woman.
 Ведущий выбирает категорию, выбирает, кто отвечает, и жмёт «Зачёт» / «Не зачёт». Правильный ответ виден только ведущему,
-гостям он показывается после оценки. За верный ответ — 1 очко. Если счёт равный — «Бонус игра» (один кубик, «21 очко», бросок тряской телефона).
+гостям он показывается после оценки. За верный ответ — 1 очко. Если счёт равный — «Бонус игра» (два кубика, «21 очко», бросок тряской телефона).
 Тексты вопросов и ответов — в блоке CATS ниже, их можно править без изменения остального кода.
 """
 import os, re, json, time, random, secrets, tempfile, hashlib
@@ -55,7 +55,7 @@ state = fresh()
 
 
 def new_dice():
-    return {"turn": None, "shaking": False, "winner": None, "seq": 0, "last": None, "last_who": None, "ev": [],
+    return {"turn": None, "armed": False, "shaking": False, "winner": None, "seq": 0, "last": None, "last_who": None, "ev": [],
             "p": {w: {"rolls": [], "total": 0, "stand": False, "bust": False} for w in WHO}}
 
 
@@ -65,7 +65,7 @@ def dice_recalc(d):
     for kind, w, v in d["ev"]:
         p = d["p"][w]
         if kind == "r":
-            p["rolls"].append(v); p["total"] += v
+            v = sum(v); p["rolls"].append(v); p["total"] += v
             if p["total"] >= 21:
                 p["stand"] = True; p["bust"] = p["total"] > 21
         else:
@@ -80,7 +80,7 @@ def dice_recalc(d):
     d["last_who"] = None; d["last"] = None
     for kind, w, v in reversed(d["ev"]):
         if kind == "r":
-            d["last_who"], d["last"] = w, v; break
+            d["last_who"], d["last"] = w, list(v); break
 
 
 def score_locked():
@@ -168,21 +168,23 @@ def apply(c):
         if a == "dice_pick":
             w = c.get("who")
             if w in WHO and d["winner"] is None and not d["p"][w]["stand"]:
-                d["turn"], d["shaking"] = w, False
+                d["turn"], d["armed"], d["shaking"] = w, False, False
             elif w is None:
-                d["turn"], d["shaking"] = None, False
-        elif a == "dice_shake" and d["turn"] and d["winner"] is None:
+                d["turn"], d["armed"], d["shaking"] = None, False, False
+        elif a == "dice_arm" and d["turn"] and d["winner"] is None:
+            d["armed"], d["shaking"] = True, False
+        elif a == "dice_shake" and d["armed"] and d["winner"] is None:
             d["shaking"] = bool(c.get("on", True))
         elif a == "roll" and d["turn"] and d["winner"] is None:
-            v = random.randint(1, 6)
+            v = [random.randint(1, 6), random.randint(1, 6)]
             d["ev"].append(["r", d["turn"], v]); d["seq"] += 1
-            d["turn"], d["shaking"] = None, False
+            d["turn"], d["armed"], d["shaking"] = None, False, False
             dice_recalc(d)
         elif a == "stand" and d["turn"] and d["p"][d["turn"]]["total"] > 0 and d["winner"] is None:
-            d["ev"].append(["s", d["turn"], 0]); d["turn"], d["shaking"] = None, False
+            d["ev"].append(["s", d["turn"], 0]); d["turn"], d["armed"], d["shaking"] = None, False, False
             dice_recalc(d)
         elif a == "undo" and d["ev"]:
-            d["ev"].pop(); d["turn"], d["shaking"] = None, False
+            d["ev"].pop(); d["turn"], d["armed"], d["shaking"] = None, False, False
             dice_recalc(d)
     if a == "reset":
         fr = fresh(); fr["rev"] = state["rev"]; state.clear(); state.update(fr)
@@ -457,7 +459,7 @@ h2{margin:6px 0 0;font-size:16px;font-weight:600;color:var(--mist)}
 .rolls{font-size:30px;font-weight:800;text-align:center;min-height:1.3em}
 .shakebox{border-radius:var(--r-l);padding:26px 16px;background:var(--c-sf);border:2px solid var(--c);display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:var(--mist);font-weight:600}
 .shakebox b{font-size:32px;color:var(--c)}
-.shakeico{font-size:64px;animation:hshake .18s linear infinite}
+.shakeico{font-size:64px}.shakeico.go{animation:hshake .18s linear infinite}
 @keyframes hshake{0%,100%{transform:rotate(-14deg) translateX(-5px)}50%{transform:rotate(14deg) translateX(5px)}}
 .hint{color:var(--mist);font-size:14px;text-align:center}
 .spacer{flex:1}
@@ -523,8 +525,8 @@ function viewDice(s){
   if (d.winner) {
     h += `${pl('man')}${pl('woman')}<div class="verdict ${d.winner === 'draw' ? '' : 'ok'}">${d.winner === 'draw' ? 'Ничья — переигрываем' : 'Победил ' + WN[d.winner]}</div>
       <button class="btn hi" data-act="dice_start">Переиграть</button>`;
-  } else if (d.shaking) {
-    h += `<div class="shakebox ${cls(d.turn)}"><div class="shakeico">🎲</div><b>${WN[d.turn]}</b><span>Трясите телефон — кубик трясётся на экране. Перестанете — он упадёт.</span></div>
+  } else if (d.armed) {
+    h += `<div class="shakebox ${cls(d.turn)}"><div class="shakeico ${d.shaking ? 'go' : ''}">🎲</div><b>${WN[d.turn]}</b><span>${d.shaking ? 'Кубик трясётся. Остановите телефон — кубик упадёт.' : 'Начинайте трясти телефон — кубик на экране затрясётся.'}</span></div>
       <button class="btn quiet" data-act="roll">Бросить сейчас</button>`;
   } else if (d.turn) {
     const me = d.p[d.turn];
@@ -534,7 +536,7 @@ function viewDice(s){
       <button class="btn quiet" data-act="stand" ${me.total ? '' : 'disabled'}>Хватит (${me.total})</button>
       <button class="btn quiet" data-act="dice_pick">Выбрать другого</button>`;
   } else {
-    h += `${pl('man')}${pl('woman')}${d.last ? `<div class="rolls">${WN[d.last_who]}: выпало ${d.last}</div>` : ''}<div class="hint">Кто бросает?</div>
+    h += `${pl('man')}${pl('woman')}${d.last ? `<div class="rolls">${WN[d.last_who]}: выпало ${d.last[0] + d.last[1]} (${d.last[0]} + ${d.last[1]})</div>` : ''}<div class="hint">Кто бросает?</div>
       <button class="btn m" style="min-height:96px;font-size:26px" data-act="dice_pick" data-who="man" ${d.p.man.stand ? 'disabled' : ''}>Man</button>
       <button class="btn w" style="min-height:96px;font-size:26px" data-act="dice_pick" data-who="woman" ${d.p.woman.stand ? 'disabled' : ''}>Woman</button>`;
   }
@@ -560,24 +562,30 @@ function tick(){
 setInterval(tick, 250);
 window.onState = s => { render(); };
 /* Тряска: «Трясти кости» включает тряску кубика на экране; когда телефон успокоился (после движения), бросок фиксируется. */
-let moved = false, lastMove = 0, shakeSince = 0, hasSensor = false;
+let moved = false, lastMove = 0, armedAt = 0, sentShake = false, hasSensor = false;
 function onMotion(e){
   const a = e.accelerationIncludingGravity || e.acceleration; if (!a) return;
   const m = Math.hypot(a.x || 0, a.y || 0, a.z || 0), now = Date.now();
   const d = Math.abs(m - (onMotion.prev || m)); onMotion.prev = m; hasSensor = true;
-  if (d > 6) { moved = true; lastMove = now; }
+  if (d > 6) {
+    moved = true; lastMove = now;
+    if (!sentShake && S && S.dice && S.dice.armed) { sentShake = true; send({a: 'dice_shake', on: true}); }   // кубик трясётся, только пока трясётся телефон
+  }
 }
-function rollNow(){ if (S && S.mode === 'dice' && S.dice && S.dice.turn && !S.dice.winner) { moved = false; shakeSince = 0; send({a: 'roll'}); } }
+function rollNow(){ if (S && S.mode === 'dice' && S.dice && S.dice.turn && !S.dice.winner) { moved = false; sentShake = false; armedAt = 0; send({a: 'roll'}); } }
 function startShake(){
   if (!(S && S.mode === 'dice' && S.dice && S.dice.turn)) return;
-  moved = false; lastMove = 0; shakeSince = Date.now(); send({a: 'dice_shake', on: true});
+  moved = false; sentShake = false; lastMove = 0; armedAt = Date.now(); send({a: 'dice_arm'});
 }
 setInterval(() => {
-  if (!(S && S.dice && S.dice.shaking && shakeSince)) return;
+  if (!(S && S.dice && S.dice.armed && armedAt)) return;
   const now = Date.now();
-  if (moved ? now - lastMove > 900 : (!hasSensor && now - shakeSince > 2500)) rollNow();   // нет датчика — бросок сам через 2,5 с
+  if (!hasSensor) {                                   // нет датчика: кубик потрясётся 2,5 с и упадёт сам
+    if (!sentShake && now - armedAt > 400) { sentShake = true; send({a: 'dice_shake', on: true}); }
+    if (now - armedAt > 2900) rollNow();
+  } else if (sentShake && moved && now - lastMove > 900) rollNow();   // телефон успокоился — бросок
 }, 150);
-window.__shake = () => { startShake(); onMotion({accelerationIncludingGravity: {x: 0, y: 0, z: 9.8}}); };
+window.__shake = () => { startShake(); };
 function enableShake(then){
   const go = () => { if (!shakeOn) addEventListener('devicemotion', onMotion); shakeOn = true; if (then) then(); };
   const DM = window.DeviceMotionEvent;
@@ -680,12 +688,11 @@ html,body{height:100%;overflow:hidden}
 .pl .hist{font-size:clamp(22px,2.6vw,48px);min-height:1.3em;word-break:break-all}
 .duel{transition:opacity .35s}.stage .duel.fade{opacity:0 !important;animation:none}
 .duel .pl .sum{font-size:clamp(44px,6.5vh,110px)}.duel .pl .hist{min-height:1.2em}
-.box{flex:none;--bx:min(70vw,40vh);--s:calc(var(--bx) * .27);width:var(--bx);height:var(--bx);position:relative;margin:1.4vh 0;border-radius:2%;border:4px solid rgba(255,255,255,.55);background:rgba(10,12,11,.5);box-shadow:0 0 40px rgba(0,0,0,.4);transition:box-shadow .08s,border-color .08s}
+.box{flex:none;--bx:min(70vw,40vh);--s:calc(var(--bx) * .21);width:var(--bx);height:var(--bx);position:relative;margin:1.4vh 0;border-radius:2%;border:4px solid rgba(255,255,255,.55);background:rgba(10,12,11,.5);box-shadow:0 0 40px rgba(0,0,0,.4);transition:box-shadow .08s,border-color .08s}
 .box.hit{border-color:#fff;box-shadow:0 0 50px rgba(255,255,255,.55)}
-.slot{position:absolute;left:50%;top:50%;width:var(--s);height:var(--s);margin:calc(var(--s) / -2) 0 0 calc(var(--s) / -2);transition:transform .45s cubic-bezier(.2,1.2,.3,1)}
-.slot.live{transition:none}
+.slot{position:absolute;left:50%;top:50%;transform-origin:center;width:var(--s);height:var(--s);margin:calc(var(--s) / -2) 0 0 calc(var(--s) / -2)}
 .die3{width:100%;height:100%;perspective:900px;position:relative}
-.tilt{width:100%;height:100%;transform-style:preserve-3d;transform:rotateX(-24deg) rotateY(-30deg)}
+.tilt{width:100%;height:100%;transform-style:preserve-3d}
 .cube3{width:100%;height:100%;position:relative;transform-style:preserve-3d;transition:transform 1.3s cubic-bezier(.12,.75,.2,1)}
 .face{position:absolute;inset:0;border-radius:14%;background:linear-gradient(145deg,#fffdf6,#e6e0d2);box-shadow:inset 0 0 18px rgba(0,0,0,.18),inset 0 0 0 2px rgba(255,255,255,.7);display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:13%;backface-visibility:hidden}
 .face i{border-radius:50%;margin:12%}
@@ -693,11 +700,11 @@ html,body{height:100%;overflow:hidden}
 .shadow{position:absolute;left:10%;right:10%;bottom:-9%;height:11%;border-radius:50%;background:radial-gradient(rgba(0,0,0,.55),transparent 70%);filter:blur(4px)}
 .die3.drop{animation:drop 1.3s cubic-bezier(.3,.6,.4,1)}
 @keyframes drop{0%{transform:translateY(-130%) scale(1.3)}38%{transform:translateY(0) scale(1)}52%{transform:translateY(-32%)}66%{transform:translateY(0)}78%{transform:translateY(-10%)}100%{transform:translateY(0)}}
-.die3.shaking .cube3{transition:none;animation:spin3 .6s linear infinite}
 @keyframes jit{0%{transform:translate(-14px,6px)}25%{transform:translate(12px,-10px)}50%{transform:translate(-8px,-6px)}75%{transform:translate(14px,9px)}100%{transform:translate(-14px,6px)}}
 @keyframes spin3{0%{transform:rotateX(20deg) rotateY(0) rotateZ(0)}33%{transform:rotateX(140deg) rotateY(110deg) rotateZ(40deg)}66%{transform:rotateX(250deg) rotateY(230deg) rotateZ(-30deg)}100%{transform:rotateX(380deg) rotateY(360deg) rotateZ(0)}}
 .dres{font-family:var(--display);font-weight:900;font-size:clamp(34px,7vw,130px);line-height:1;color:var(--chalk);text-align:center}
 .dres span{color:var(--c);font-size:.55em;margin-right:.2em}
+.dres small{display:block;font-size:.4em;color:var(--mist);font-weight:700;margin-top:.1em}
 .dres b{font-size:1.5em;color:var(--c);text-shadow:0 0 40px var(--c-soft)}
 .dres.late,.final.late{opacity:0;animation:popin .45s 1.15s cubic-bezier(.2,1.4,.3,1) forwards}
 @keyframes popin{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
@@ -868,45 +875,105 @@ const PIPS = {1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 
 const POSE = {1: [0, 0], 2: [0, -90], 3: [-90, 0], 4: [90, 0], 5: [0, 90], 6: [0, 180]};   // [rotateX, rotateY], чтобы нужная грань смотрела на зрителя
 const FACE_T = {1: 'rotateY(0deg)', 2: 'rotateY(90deg)', 3: 'rotateX(90deg)', 4: 'rotateX(-90deg)', 5: 'rotateY(-90deg)', 6: 'rotateY(180deg)'};
 const poseCss = (v, k = 0) => `rotateX(${POSE[v][0] + k * 720}deg) rotateY(${POSE[v][1] + k * 540}deg) rotateZ(${k * 360}deg)`;
-function cubeHtml(v, shaking){
+function cubeHtml(vals){
   const face = n => `<div class="face" style="transform:${FACE_T[n]} translateZ(calc(var(--s) / 2))">${Array.from({length: 9}, (_, i) => `<i class="${PIPS[n].includes(i) ? 'on' : ''}"></i>`).join('')}</div>`;
-  return `<div class="box"><div class="slot"><div class="die3 ${shaking ? 'shaking' : ''}"><div class="tilt"><div class="cube3" data-v="${v}" style="transform:${poseCss(v)}">${[1, 2, 3, 4, 5, 6].map(face).join('')}</div></div><div class="shadow"></div></div></div></div>`;
+  const busy = phys.mode !== 'idle';
+  const one = (v, o) => `<div class="slot" style="transform:translate(calc(${o.x} * var(--bx)),calc(${o.y} * var(--bx)))"><div class="die3"><div class="cube3" data-v="${v}" style="transform:${busy ? dPose(o) : poseCss(v)};${busy ? 'transition:none' : ''}">${[1, 2, 3, 4, 5, 6].map(face).join('')}</div><div class="shadow"></div></div></div>`;
+  return `<div class="box">${one(vals[0], phys.dice[0])}${one(vals[1], phys.dice[1])}</div>`;
 }
-/* Кубик в квадратной коробке: пока идёт тряска, он летает и бьётся о стенки. */
-let physRaf = 0, physSlot = null;
-function startPhys(on){
-  const slot = document.querySelector('.slot'), box = document.querySelector('.box');
-  if (physSlot && physSlot !== slot) { cancelAnimationFrame(physRaf); physRaf = 0; physSlot = null; }
-  if (!on) { if (physRaf) { cancelAnimationFrame(physRaf); physRaf = 0; } if (slot) { slot.classList.remove('live'); slot.style.transform = ''; } physSlot = null; return; }
-  if (!slot || !box || physRaf) return;
-  physSlot = slot; slot.classList.add('live');
-  let x = 0, y = 0, vx = (Math.random() < .5 ? -1 : 1) * 620, vy = (Math.random() < .5 ? -1 : 1) * 540, last = performance.now();
-  const step = t => {
-    if (!slot.isConnected) { physRaf = 0; physSlot = null; return; }
-    const dt = Math.min(.04, (t - last) / 1000); last = t;
-    const lim = (box.clientWidth - slot.offsetWidth * 1.5) / 2;
-    x += vx * dt; y += vy * dt; let hit = false;
-    if (x > lim) { x = lim; vx = -Math.abs(vx) * (.9 + Math.random() * .25); vy += (Math.random() - .5) * 300; hit = true; }
-    if (x < -lim) { x = -lim; vx = Math.abs(vx) * (.9 + Math.random() * .25); vy += (Math.random() - .5) * 300; hit = true; }
-    if (y > lim) { y = lim; vy = -Math.abs(vy) * (.9 + Math.random() * .25); vx += (Math.random() - .5) * 300; hit = true; }
-    if (y < -lim) { y = -lim; vy = Math.abs(vy) * (.9 + Math.random() * .25); vx += (Math.random() - .5) * 300; hit = true; }
-    const sp = Math.hypot(vx, vy); if (sp < 450) { vx *= 450 / sp; vy *= 450 / sp; } if (sp > 950) { vx *= 950 / sp; vy *= 950 / sp; }
-    slot.style.transform = `translate(${x}px,${y}px)`;
-    if (hit) { box.classList.add('hit'); setTimeout(() => box.classList.remove('hit'), 90); if (unlocked) tone(90 + Math.random() * 60, 0, .09, 'triangle', .22); }
-    physRaf = requestAnimationFrame(step);
-  };
-  physRaf = requestAnimationFrame(step);
+/* Два кубика в квадрате: пока трясут телефон, они летают и бьются о стенки и друг о друга; когда телефон затих — замедляются и ложатся на грань. */
+const mkDie = (x, y) => ({x, y, vx: 0, vy: 0, ax: 20, ay: 0, az: 0, wx: 0, wy: 0, wz: 0, final: 5, ease: false, done: false});
+const phys = {mode: 'idle', dice: [mkDie(-.2, .05), mkDie(.2, -.05)], loop: 0, last: 0, doneAt: 0, unit: true};   // пока unit — x,y в долях квадрата
+const nearest = (cur, base) => base + 360 * Math.round((cur - base) / 360);
+const dPose = o => `rotateX(${o.ax}deg) rotateY(${o.ay}deg) rotateZ(${o.az}deg)`;
+function physApply(){
+  const slots = document.querySelectorAll('.slot'), cubes = document.querySelectorAll('.cube3'), box = document.querySelector('.box');
+  if (!box) return;
+  phys.dice.forEach((o, i) => {
+    if (!slots[i]) return;
+    slots[i].style.transform = `translate(${o.x * box.clientWidth}px,${o.y * box.clientWidth}px)`;
+    if (!o.ease && cubes[i]) cubes[i].style.transform = dPose(o);
+  });
+}
+function physLoop(t){
+  if (phys.mode === 'idle') { phys.loop = 0; return; }
+  const box = document.querySelector('.box'), slot = document.querySelector('.slot'), cubes = document.querySelectorAll('.cube3');
+  const dt = Math.min(.04, (t - phys.last) / 1000); phys.last = t;
+  if (box && slot) {
+    const W = box.clientWidth, sz = slot.offsetWidth / W;           // всё считаем в долях стороны квадрата
+    const lim = .5 - sz * .75, rest = phys.mode === 'settle' ? .62 : 1, live = phys.mode === 'live';
+    let alldone = true;
+    phys.dice.forEach((o, i) => {
+      if (phys.mode === 'settle') { const k = Math.exp(-2.4 * dt), kw = Math.exp(-1.7 * dt); o.vx *= k; o.vy *= k; o.wx *= kw; o.wy *= kw; o.wz *= kw; }
+      o.x += o.vx * dt; o.y += o.vy * dt; let hit = false;
+      if (o.x > lim) { o.x = lim; o.vx = -Math.abs(o.vx) * rest; hit = true; }
+      if (o.x < -lim) { o.x = -lim; o.vx = Math.abs(o.vx) * rest; hit = true; }
+      if (o.y > lim) { o.y = lim; o.vy = -Math.abs(o.vy) * rest; hit = true; }
+      if (o.y < -lim) { o.y = -lim; o.vy = Math.abs(o.vy) * rest; hit = true; }
+      if (hit) {
+        if (live) { o.vx += (Math.random() - .5) * .6; o.vy += (Math.random() - .5) * .6; const sp = Math.hypot(o.vx, o.vy); if (sp < 1) { o.vx /= sp; o.vy /= sp; } if (sp > 2) { o.vx *= 2 / sp; o.vy *= 2 / sp; } }
+        box.classList.add('hit'); setTimeout(() => box.classList.remove('hit'), 90);
+        const sp = Math.hypot(o.vx, o.vy); if (unlocked && sp > .2) tone(80 + Math.random() * 60, 0, .09, 'triangle', Math.min(.22, sp / 8));
+        o.wx += (Math.random() - .5) * 400; o.wy += (Math.random() - .5) * 400;
+      }
+      if (!o.ease) { o.ax += o.wx * dt; o.ay += o.wy * dt; o.az += o.wz * dt; }
+    });
+    const [a, b] = phys.dice, dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy), min = sz * 1.15;
+    if (dist < min && dist > 1e-4) {                                  // кубики сталкиваются
+      const nx = dx / dist, ny = dy / dist, push = (min - dist) / 2;
+      a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+      const va = a.vx * nx + a.vy * ny, vb = b.vx * nx + b.vy * ny;
+      if (va - vb > 0) { a.vx += (vb - va) * nx; a.vy += (vb - va) * ny; b.vx += (va - vb) * nx; b.vy += (va - vb) * ny; if (unlocked && va - vb > .3) tone(300 + Math.random() * 120, 0, .05, 'square', .08); }
+    }
+    phys.dice.forEach((o, i) => {
+      const sp = Math.hypot(o.vx, o.vy);
+      if (phys.mode === 'settle' && !o.ease && sp < .28 && cubes[i]) {   // почти встал — доворачиваем на ближайшую грань
+        const [px, py] = POSE[o.final];
+        o.ease = true; cubes[i].style.transition = 'transform .75s cubic-bezier(.2,.9,.3,1.15)';
+        o.ax = nearest(o.ax, px); o.ay = nearest(o.ay, py); o.az = nearest(o.az, 0);
+        cubes[i].style.transform = dPose(o);
+        setTimeout(() => { if (unlocked) tone(110, 0, .12, 'triangle', .2); }, 450);
+      }
+      if (!(o.ease && sp < .012)) alldone = false;
+    });
+    if (phys.mode === 'settle' && alldone) {
+      phys.dice.forEach(o => { o.vx = o.vy = 0; });
+      if (!phys.doneAt) phys.doneAt = t;
+      if (t - phys.doneAt > 800) { phys.mode = 'idle'; phys.doneAt = 0; phys.loop = 0; physApply(); return; }
+    }
+    physApply();
+  }
+  phys.loop = requestAnimationFrame(physLoop);
+}
+function physRun(){ if (!phys.loop) { phys.last = performance.now(); phys.loop = requestAnimationFrame(physLoop); } }
+function physSync(d){
+  if (d.shaking) {
+    if (phys.mode !== 'live') {
+      phys.mode = 'live'; phys.doneAt = 0;
+      phys.dice.forEach((o, i) => {
+        o.ease = false; o.vx = (i ? -1 : 1) * (1 + Math.random() * .4); o.vy = (Math.random() < .5 ? -1 : 1) * (.8 + Math.random() * .5);
+        o.wx = 500 + Math.random() * 300; o.wy = 600 + Math.random() * 300; o.wz = 150 + Math.random() * 150;
+      });
+      document.querySelectorAll('.cube3').forEach(c => c.style.transition = 'none');
+    }
+    physRun();
+  } else if (phys.mode === 'live') {
+    phys.mode = 'settle'; phys.doneAt = 0;
+    phys.dice.forEach((o, i) => { o.final = (d.last && d.last[i]) || 1; o.ease = false; });
+    document.querySelectorAll('.cube3').forEach(c => c.style.transition = 'none');
+    physRun();
+  } else if (phys.mode === 'settle') physRun();
 }
 function diceHtml(s){
   const d = s.dice, fresh = prevRoll !== -1 && d.seq !== prevRoll;
   const pl = w => { const p = d.p[w]; return `<div class="pl ${cls(w)} ${d.turn === w && !d.winner ? 'turn' : ''}"><div class="nm">${WN[w]}</div><div class="num sum">${p.total}</div>
     <div class="st">${p.bust ? 'ПЕРЕБОР!' : p.stand ? 'хватит' : d.turn === w ? 'бросает…' : 'ждёт'}</div><div class="hist">${p.rolls.join(' + ')}</div></div>`; };
   let info = '';
-  if (d.shaking) info = `<div class="dstat ${cls(d.turn)}">${WN[d.turn]} трясёт кубик…</div>`;
-  else if (d.last && !d.turn) info = `<div class="dres ${cls(d.last_who)} ${fresh ? 'late' : ''}"><span>${WN[d.last_who]}</span> выпало <b>${d.last}</b></div>`;
+  if (d.armed) info = `<div class="dstat ${cls(d.turn)}">${WN[d.turn]} ${d.shaking ? 'трясёт кубики…' : 'трясите телефон'}</div>`;
+  else if (d.last && !d.turn) info = `<div class="dres ${cls(d.last_who)} ${fresh ? 'late' : ''}"><span>${WN[d.last_who]}</span> выпало <b>${d.last[0] + d.last[1]}</b><small>${d.last[0]} + ${d.last[1]}</small></div>`;
   else if (d.turn) info = `<div class="dstat ${cls(d.turn)}">${WN[d.turn]} бросает</div>`;
   const win = d.winner ? `<div class="final ${d.winner === 'man' ? 'm' : d.winner === 'woman' ? 'w' : ''} ${fresh ? 'late' : ''}">${d.winner === 'draw' ? 'Ничья — переигрываем' : 'Победил ' + WN[d.winner] + '!'}</div>` : '';
-  return `<div class="cattitle"><span class="ic">🎲</span>Бонус игра</div><div class="duel ${d.shaking ? 'fade' : ''}">${pl('man')}${pl('woman')}</div>${cubeHtml(d.last || 5, d.shaking)}${d.winner ? win : info}`;
+  return `<div class="cattitle"><span class="ic">🎲</span>Бонус игра</div><div class="duel ${d.armed ? 'fade' : ''}">${pl('man')}${pl('woman')}</div>${cubeHtml(d.last || [5, 3])}${d.winner ? win : info}`;
 }
 /* Анимация выбора: категория «пробегает» по плиткам и останавливается на выбранной; затем выбранный игрок (Man/Woman) вспыхивает. */
 let busyUntil = 0, busyTimer = null, lastView = 'menu', sweptKey = '', choseKey = '';
@@ -956,18 +1023,17 @@ function render(){
       if (unlocked && rk !== prevRes && res) (res === 'ok' ? sfx.ok : sfx.bad)();
       prevRes = rk;
       if (s.dice) {
-        const d = s.dice;
+        const d = s.dice, wasLive = phys.mode === 'live';
         if (d.seq !== prevRoll) {
-          if (prevRoll !== -1 && d.last) {
-            const cube = stage.querySelector('.cube3'), die = stage.querySelector('.die3');
-            if (cube) { cube.style.transition = 'none'; cube.style.transform = poseCss(d.last, -1); void cube.offsetWidth; cube.style.transition = ''; cube.style.transform = poseCss(d.last); }
-            if (die) die.classList.add('drop');
+          if (prevRoll !== -1 && d.last && !wasLive) {          // бросок без тряски: кубик падает в квадрат
+            stage.querySelectorAll('.cube3').forEach((cube, i) => { cube.style.transition = 'none'; cube.style.transform = poseCss(d.last[i], -1); void cube.offsetWidth; cube.style.transition = ''; cube.style.transform = poseCss(d.last[i]); });
+            stage.querySelectorAll('.die3').forEach((die, i) => { die.style.animationDelay = (i * .12) + 's'; die.classList.add('drop'); });
             if (unlocked) { sfx.roll(); setTimeout(sfx.roll, 450); }
-            if (d.winner && unlocked) setTimeout(sfx.win, 1500);
           }
+          if (d.winner && unlocked) setTimeout(sfx.win, wasLive ? 2300 : 1500);
           prevRoll = d.seq;
         }
-        startPhys(d.shaking);
+        physSync(d);
         if (d.shaking && !rattle) rattle = setInterval(() => { if (unlocked) sfx.rattle(); }, 230);
         if (!d.shaking && rattle) { clearInterval(rattle); rattle = 0; }
       } else { prevRoll = -1; if (rattle) { clearInterval(rattle); rattle = 0; } }
