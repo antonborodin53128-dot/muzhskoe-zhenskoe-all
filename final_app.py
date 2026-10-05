@@ -1,6 +1,6 @@
 """«Финал» — общий конкурс Man vs Woman.
 5 категорий (Фильмы, Поиск предмета, Загадки, Музыка, Математика): в каждой сначала отвечает Man, потом Woman.
-Ведущий выбирает категорию, выбирает, кто отвечает, и жмёт «Правильно» / «Ошибка». Правильный ответ виден только ведущему,
+Ведущий выбирает категорию, выбирает, кто отвечает, и жмёт «Зачёт» / «Не зачёт». Правильный ответ виден только ведущему,
 гостям он показывается после оценки. За верный ответ — 1 очко. Если счёт равный — игра «21 очко» (два кубика, бросок тряской телефона).
 Тексты вопросов и ответов — в блоке CATS ниже, их можно править без изменения остального кода.
 """
@@ -488,8 +488,8 @@ function viewQuestion(s){
   if (full.qfile) h += `<div class="two"><button class="btn quiet" data-act="audio" data-k="q">▶ Вопрос</button><button class="btn quiet" data-act="audio" data-k="a">▶ Ответ</button></div>
     <button class="btn quiet" data-act="audio" data-k="stop">■ Стоп</button>`;
   if (c.time) h += `<div class="timer"><div class="num" id="tm">${c.time}</div><button class="btn quiet" data-act="timer">${cu.started_at ? 'Заново' : 'Старт ' + c.time + ' с'}</button></div>`;
-  h += `<div class="two"><button class="btn good ${res === 'ok' ? 'sel' : ''}" data-act="mark" data-r="ok">Правильно</button><button class="btn bad ${res === 'bad' ? 'sel' : ''}" data-act="mark" data-r="bad">Ошибка</button></div>`;
-  h += res ? `<div class="verdict ${res}">${res === 'ok' ? 'Засчитано +1' : 'Ошибка, без очка'}</div>` : `<div class="hint">Оценка появится на экране гостей вместе с ответом</div>`;
+  h += `<div class="two"><button class="btn good ${res === 'ok' ? 'sel' : ''}" data-act="mark" data-r="ok">Зачёт</button><button class="btn bad ${res === 'bad' ? 'sel' : ''}" data-act="mark" data-r="bad">Не зачёт</button></div>`;
+  h += res ? `<div class="verdict ${res}">${res === 'ok' ? 'Зачёт +1' : 'Не зачёт, без очка'}</div>` : `<div class="hint">Результат появится на экране гостей вместе с ответом</div>`;
   h += `<button class="btn hi ${res ? 'pulse' : ''}" data-act="to_pick">← Назад</button>`;
   return h + `<button class="btn quiet" data-act="back">К категориям</button>`;
 }
@@ -611,6 +611,15 @@ html,body{height:100%;overflow:hidden}
 .vd{font-weight:800;font-size:clamp(22px,2.6vw,48px)}
 .vd.ok{color:var(--g)} .vd.bad{color:var(--danger)}
 .pickrow{display:flex;gap:3vw;align-items:center;justify-content:center}
+.stage.enter>*{animation:popin .55s cubic-bezier(.2,1.3,.3,1) both}
+@keyframes popin{from{opacity:0;transform:translateY(2.2vh) scale(.92)}to{opacity:1;transform:none}}
+.tile{transition:transform .25s,border-color .15s,background .15s,box-shadow .25s}
+.tile.sweep{border-color:var(--chalk);background:rgba(255,255,255,.14)}
+.tile.chosen{transform:scale(1.08);border-color:var(--chalk);background:rgba(255,255,255,.18);box-shadow:0 0 70px rgba(255,255,255,.4)}
+.pickside{transition:transform .3s cubic-bezier(.2,1.3,.3,1),opacity .3s}
+.pickside.chosen{transform:scale(1.28)}
+.pickside.chosen .badge{box-shadow:0 0 80px var(--c)}
+.pickside.dim{opacity:.22;transform:scale(.88)}
 .pickside{display:flex;align-items:center;gap:1vw;font-size:clamp(14px,1.6vw,30px)}
 .pickside .badge{font-size:clamp(20px,2.4vw,44px);width:clamp(150px,15vw,300px);text-align:center;padding-left:0;padding-right:0}
 .pickside .dot{font-size:clamp(14px,1.6vw,28px)}
@@ -630,7 +639,12 @@ html,body{height:100%;overflow:hidden}
 .cube{width:clamp(70px,9vw,160px);height:clamp(70px,9vw,160px);display:grid;place-items:center;font-size:clamp(60px,8vw,150px);line-height:1;background:var(--chalk);color:#14110f;border-radius:18%;box-shadow:0 10px 40px rgba(0,0,0,.45)}
 .cube.rolling{animation:tumble .12s linear infinite}
 @keyframes tumble{0%{transform:rotate(-18deg) translateY(-6px)}50%{transform:rotate(14deg) translateY(4px)}100%{transform:rotate(-18deg) translateY(-6px)}}
-.sound{position:fixed;right:20px;bottom:20px;z-index:50;border:1px solid #4a4f4c;background:rgba(10,12,11,.9);color:var(--chalk);border-radius:999px;padding:12px 20px;font-weight:600;font-size:16px;transition:opacity .4s}
+.startov{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:radial-gradient(80% 80% at 50% 50%,rgba(6,12,9,.9),rgba(8,6,8,.97));backdrop-filter:blur(10px);transition:opacity .5s}
+.startbox{display:flex;flex-direction:column;align-items:center;gap:3.2vh;text-align:center;padding:0 5vw}
+.startbox .wordmark{font-size:clamp(28px,4vw,72px)}
+.startbtn{border:0;border-radius:999px;padding:.7em 1.6em;font-family:var(--display);font-weight:800;font-size:clamp(22px,2.8vw,52px);background:linear-gradient(100deg,var(--g),var(--p));color:#10120f;box-shadow:0 0 70px rgba(255,255,255,.12);animation:startpulse 1.8s ease-in-out infinite}
+@keyframes startpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+.starthint{color:var(--mist);font-weight:600;font-size:clamp(14px,1.4vw,26px);max-width:34em}
 @media (max-width:900px){.screen{grid-template-columns:1fr;grid-template-rows:auto 1fr;gap:1vh}.sidecol{flex-direction:row;padding:1vh 4vw;justify-content:space-around}.sidecol .num{font-size:12vw}}
 </style></head>
 <body>
@@ -641,7 +655,11 @@ html,body{height:100%;overflow:hidden}
   <section class="stage" id="stage"></section>
   <div class="sidecol w" id="sw"><div class="nm">Woman</div><div class="num" id="nw">0</div><div class="un">очков</div></div>
 </main>
-<button class="sound" id="snd">🔊 Включить звук</button>
+<div class="startov" id="startov"><div class="startbox">
+  <div class="wordmark"><i></i>Финал</div>
+  <button class="startbtn" id="snd">🔊 Включить звук и начать</button>
+  <div class="starthint">Нажмите один раз: после этого звук и музыка в конкурсе будут играть сами</div>
+</div></div>
 <audio id="au" preload="auto"></audio>
 <script>
 __ROLL_JS__
@@ -713,7 +731,7 @@ const Bg = (() => {
 
 /* ---------- Звук (только эффекты, музыка идёт через <audio>) ---------- */
 let AC = null, unlocked = false;
-const au = document.getElementById('au'), snd = document.getElementById('snd');
+const au = document.getElementById('au'), snd = document.getElementById('snd'), startov = document.getElementById('startov');
 function tone(f, t0, d, type, g){
   if (!AC) return; const o = AC.createOscillator(), v = AC.createGain();
   o.type = type || 'sine'; o.frequency.value = f; v.gain.setValueAtTime(0, AC.currentTime + t0);
@@ -725,14 +743,24 @@ const sfx = {
   bad(){ tone(196, 0, .4, 'sawtooth', .1); tone(147, .18, .55, 'sawtooth', .1); },
   roll(){ for (let i = 0; i < 7; i++) tone(300 + Math.random() * 500, i * .07, .06, 'square', .06); },
   win(){ [523, 659, 784, 1047].forEach((f, i) => tone(f, i * .13, .4)); },
-  time(){ tone(220, 0, .6, 'sawtooth', .12); }
+  time(){ tone(220, 0, .6, 'sawtooth', .12); },
+  tick(i){ tone(520 + (i % 8) * 40, 0, .05, 'square', .05); },
+  pick(){ tone(660, 0, .12, 'triangle', .14); tone(990, .09, .28, 'triangle', .14); }
 };
-snd.onclick = async () => {
+// Тишина в формате WAV (44 байта данных): нужна, чтобы «разбудить» <audio> внутри нажатия — иначе Safari/планшеты потом не дают играть сами.
+const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=';
+function showSndBtn(text){ startov.hidden = false; startov.style.opacity = 1; snd.textContent = text || '🔊 Включить звук и начать'; }
+async function enableSound(){
+  if (unlocked) return;
   try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); await AC.resume(); } catch (e) {}
-  try { au.muted = true; await au.play().catch(() => {}); au.pause(); au.muted = false; } catch (e) {}
-  unlocked = true; snd.style.opacity = 0; setTimeout(() => { snd.hidden = true; }, 400);
+  try { const keep = au.src; au.muted = true; au.src = SILENT; await au.play(); au.pause(); au.muted = false; au.removeAttribute('src'); au.load(); if (keep && keep !== location.href) au.src = keep; } catch (e) { try { au.muted = false; } catch (e2) {} }
+  unlocked = true; startov.style.opacity = 0; setTimeout(() => { if (unlocked) startov.hidden = true; }, 520);
+  sfx.ok();                                   // короткий сигнал: слышно — значит звук включён
   if (S) playFrom(S, true);
-};
+}
+snd.onclick = enableSound;
+// Любое первое нажатие по экрану тоже включает звук (кнопку искать не обязательно).
+['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, () => { if (!unlocked) enableSound(); }, {once: false, passive: true}));
 addEventListener('keydown', e => { if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); } });
 let audioN = -1, lastAudioKey = '';
 function playFrom(s, force){
@@ -741,7 +769,8 @@ function playFrom(s, force){
   if (!force && key === lastAudioKey) return; lastAudioKey = key;
   if (!a || !a.kind) { try { au.pause(); } catch (e) {} return; }
   const f = a.kind === 'q' ? cu.qfile : cu.afile; if (!f) return;
-  au.src = BASE + 'audio/' + f; au.currentTime = 0; au.play().catch(() => {});
+  au.src = BASE + 'audio/' + f; au.currentTime = 0;
+  au.play().catch(e => { if (e && e.name === 'NotAllowedError') { unlocked = false; showSndBtn('🔊 Нажмите, чтобы включить звук'); } });
 }
 
 /* ---------- Отрисовка ---------- */
@@ -768,7 +797,7 @@ function questionHtml(s){
   if (cu.qfile) h += cu.revealed ? '' : `<div class="listen"><span class="eq"><i></i><i></i><i></i><i></i></span>Слушаем и угадываем</div>`;
   h += `<div class="q">${esc(cu.q)}</div>`;
   if (cu.time && !cu.revealed) h += `<div class="num big" id="big"></div>`;
-  if (cu.revealed) h += `<div class="vd ${res || ''}">${res === 'ok' ? 'Верно! +1 очко' : res === 'bad' ? 'Не угадали' : ''}</div><div class="ansbox ${cls(cu.who)}">${esc(cu.a)}</div>`;
+  if (cu.revealed) h += `<div class="vd ${res || ''}">${res === 'ok' ? 'Зачёт! +1 очко' : res === 'bad' ? 'Не зачёт' : ''}</div><div class="ansbox ${cls(cu.who)}">${esc(cu.a)}</div>`;
   return h;
 }
 function diceHtml(s){
@@ -779,6 +808,27 @@ function diceHtml(s){
   const win = d.winner ? `<div class="final ${d.winner === 'man' ? 'm' : d.winner === 'woman' ? 'w' : ''}">${d.winner === 'draw' ? 'Ничья — переигрываем' : 'Победил ' + WN[d.winner] + '!'}</div>` : '';
   return `<div class="cattitle"><span class="ic">🎲</span>21 очко</div><div class="duel">${pl('man')}${pl('woman')}</div>${cubes}${win}`;
 }
+/* Анимация выбора: категория «пробегает» по плиткам и останавливается на выбранной; затем выбранный игрок (Man/Woman) вспыхивает. */
+let busyUntil = 0, busyTimer = null, lastView = 'menu', sweptKey = '', choseKey = '';
+const viewOf = s => s.mode === 'pick' && s.pick ? 'pick' : s.mode === 'q' && s.cur ? 'q' : s.mode === 'dice' && s.dice ? 'dice' : 'menu';
+function later(ms){ busyUntil = performance.now() + ms; clearTimeout(busyTimer); busyTimer = setTimeout(render, ms + 30); }
+function sweepTiles(idx){
+  const tiles = [...stage.querySelectorAll('.tile')]; if (!tiles.length || idx < 0) return 0;
+  const seq = []; for (let i = 0; i < tiles.length; i++) seq.push(i); for (let i = 0; i <= idx; i++) seq.push(i);
+  const step = 80; let k = 0;
+  const t = setInterval(() => {
+    tiles.forEach(x => x.classList.remove('sweep'));
+    if (k >= seq.length) { clearInterval(t); tiles[idx].classList.add('chosen'); if (unlocked) sfx.pick(); return; }
+    tiles[seq[k]].classList.add('sweep'); if (unlocked) sfx.tick(k); k++;
+  }, step);
+  return seq.length * step + 700;
+}
+function choseWho(who){
+  const el = stage.querySelector('.pickside.' + cls(who)); if (!el) return 0;
+  stage.querySelectorAll('.pickside').forEach(x => x.classList.add(x === el ? 'chosen' : 'dim'));
+  if (unlocked) sfx.pick();
+  return 900;
+}
 function render(){
   const s = S; if (!s) return;
   try {
@@ -786,9 +836,20 @@ function render(){
     document.getElementById('sw').classList.toggle('on', !!(s.cur && s.cur.who === 'woman') || (s.dice && !s.dice.winner && s.dice.turn === 'woman'));
     setRoll(document.getElementById('nm'), s.score.man); setRoll(document.getElementById('nw'), s.score.woman);
     const key = JSON.stringify([s.mode, s.pick, s.cur && [s.cur.cat, s.cur.who, s.cur.revealed, s.cur.started_at, s.cur.audio && s.cur.audio.kind], s.results, s.dice, s.score]);
+    if (performance.now() < busyUntil) return;                 // идёт анимация выбора: итог покажем сразу после неё
     if (key !== lastKey) {
+      const v = viewOf(s);
+      if (v === 'menu') sweptKey = ''; if (v === 'pick') choseKey = '';
+      if (v === 'pick' && lastView === 'menu' && sweptKey !== s.pick) {
+        sweptKey = s.pick; const ms = sweepTiles(s.cats.findIndex(c => c.id === s.pick)); if (ms) { later(ms); return; }
+      }
+      if (v === 'q' && lastView === 'pick' && choseKey !== s.cur.cat + s.cur.who) {
+        choseKey = s.cur.cat + s.cur.who; const ms = choseWho(s.cur.who); if (ms) { later(ms); return; }
+      }
       lastKey = key;
+      const changed = v !== lastView; lastView = v;
       stage.innerHTML = s.mode === 'pick' && s.pick ? pickHtml(s) : s.mode === 'q' && s.cur ? questionHtml(s) : s.mode === 'dice' && s.dice ? diceHtml(s) : menuHtml(s);
+      if (changed) { stage.classList.remove('enter'); void stage.offsetWidth; stage.classList.add('enter'); }
       // звуки событий
       const res = s.cur ? s.results[s.cur.cat][s.cur.who] : null;
       const rk = s.cur ? s.cur.cat + s.cur.who + ':' + res : '';
