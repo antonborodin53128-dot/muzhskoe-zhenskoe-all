@@ -663,8 +663,8 @@ const Bg = (() => {
     ctx.restore();
   }
   const rnd = () => Math.random();
-  const icons = Array.from({length: 22}, (_, i) => ({
-    man: i % 2 === 0, x: rnd(), y: rnd(), r: 30 + rnd() * 40, v: .012 + rnd() * .024, a: .14 + rnd() * .14,
+  const icons = Array.from({length: 12}, (_, i) => ({
+    man: i % 2 === 0, x: rnd(), y: rnd(), r: 20 + rnd() * 22, v: .012 + rnd() * .024, a: .14 + rnd() * .14,
     w: rnd() * 6, rot: (rnd() - .5) * .6, rs: .25 + rnd() * .4, kind: Math.floor(rnd() * 8),
   }));
   const t0 = performance.now();
