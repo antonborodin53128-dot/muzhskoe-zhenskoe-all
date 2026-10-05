@@ -7,6 +7,7 @@ from voice_app import app as voice_app
 from note_app import app as note_app
 from kolcebros_app import app as kolcebros_app
 from dictation_app import app as dictation_app
+from final_app import app as final_app
 import io, base64
 import qrcode
 
@@ -38,7 +39,7 @@ HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 <div class="section"><div class="title f">ЖЕНСКОЕ</div><div class="grid">
 <a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><a class="card f" href="/contest/kolcebros">КОЛЬЦЕБРОС</a><a class="card f" href="/contest/diktant">ДИКТАНТ</a>
 </div></div>
-<div class="section"><div class="title mix">МУЖЧИНА VS ЖЕНЩИНА</div><div class="grid"><div class="card mix disabled">ОБЩИЙ КОНКУРС</div></div></div>
+<div class="section"><div class="title mix">МУЖЧИНА VS ЖЕНЩИНА</div><div class="grid"><a class="card mix" href="/contest/final">ФИНАЛ</a></div></div>
 </div></body></html>"""
 
 MENU="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{{name}}</title><style>{{css}}</style></head><body><div class="wrap"><div class="menu">
@@ -106,6 +107,13 @@ def diktant_menu():
         {"title":"ПРОВЕРКА ОЗВУЧКИ","url":"/women/diktant/audio-check","desc":"Прослушать все 20 слов перед конкурсом","class":"setup","new":True},
     ])
 
+@app.get("/contest/final")
+def final_menu():
+    return render_template_string(MENU,css=CSS,name="ФИНАЛ",qr=qr_data(absolute("/mix/final/")),actions=[
+        {"title":"ВЕДУЩИЙ","url":"/mix/final/","desc":"Категории, выбор Man/Woman, Правильно/Ошибка, ответ и 21 очко"},
+        {"title":"ГОСТЕВОЙ ЭКРАН","url":"/mix/final/screen","desc":"Экран для проектора: 5 категорий, вопросы, музыка, счёт","new":True},
+    ])
+
 application=DispatcherMiddleware(app,{
     "/men/balls":balls_app,
     "/men/hamster":hamster_app,
@@ -113,6 +121,7 @@ application=DispatcherMiddleware(app,{
     "/women/note":note_app,
     "/women/kolcebros":kolcebros_app,
     "/women/diktant":dictation_app,
+    "/mix/final":final_app,
 })
 if __name__=="__main__":
     run_simple("0.0.0.0",5000,application,use_reloader=True)
