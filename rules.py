@@ -91,6 +91,7 @@ addEventListener('keydown',function(e){if(e.key==='Escape')s(false)});})();
 GUEST_LINK = re.compile(r'<a class="link" href="[^"]*screen"[^>]*>Экран для гостей</a>')
 TOP_END = re.compile(r'(<div class="top">.*?)(</div>)|(<header>.*?)(</header>)', re.S)
 PLAIN_LINK = '<a class="link" id="rl-open" href="#" role="button" style="font:700 14px/1 system-ui,sans-serif;color:rgba(255,255,255,.82);text-decoration:underline;text-underline-offset:3px;cursor:pointer">Правила</a>'
+SETUP_LINK = re.compile(r'<a class="link" href="[^"]*setup"[^>]*>Setup</a>')
 OPEN_LINK = '<a class="link" id="rl-open" href="#" role="button">Правила</a>'
 
 
@@ -114,6 +115,7 @@ def install(app, key, in_js=False):
                 t = resp.get_data(as_text=True)
                 if "</body>" not in t or "rl-ov" in t:
                     return resp
+                t = SETUP_LINK.sub('', t)                                # ссылки на Setup на панели ведущего нет (она в меню конкурса)
                 inline = in_js
                 if GUEST_LINK.search(t):
                     t = GUEST_LINK.sub(OPEN_LINK, t); inline = True      # «Правила» вместо ссылки на экран гостей
