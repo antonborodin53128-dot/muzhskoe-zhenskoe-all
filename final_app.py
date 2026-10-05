@@ -408,6 +408,9 @@ h2{margin:6px 0 0;font-size:16px;font-weight:600;color:var(--mist)}
 .btn.good{background:var(--g);color:var(--g-ink)}
 .btn.bad{background:var(--danger);color:#2a0a10}
 .btn.sel{outline:4px solid var(--chalk);outline-offset:2px}
+.btn.hi{background:var(--chalk);color:#0b0f0d;font-size:21px;padding:20px}
+.btn.hi.pulse{animation:hi 1.4s ease-in-out infinite}
+@keyframes hi{0%,100%{box-shadow:0 0 0 0 rgba(244,243,239,.0)}50%{box-shadow:0 0 0 8px rgba(244,243,239,.28)}}
 .btn:disabled{opacity:.4}
 .btn:active:not(:disabled){transform:scale(.98)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -479,8 +482,7 @@ function viewQuestion(s){
   if (c.time) h += `<div class="timer"><div class="num" id="tm">${c.time}</div><button class="btn quiet" data-act="timer">${cu.started_at ? 'Заново' : 'Старт ' + c.time + ' с'}</button></div>`;
   h += `<div class="two"><button class="btn good ${res === 'ok' ? 'sel' : ''}" data-act="mark" data-r="ok">Правильно</button><button class="btn bad ${res === 'bad' ? 'sel' : ''}" data-act="mark" data-r="bad">Ошибка</button></div>`;
   h += res ? `<div class="verdict ${res}">${res === 'ok' ? 'Засчитано +1' : 'Ошибка, без очка'}</div>` : `<div class="hint">Оценка появится на экране гостей вместе с ответом</div>`;
-  const o = other(cu.who), done = s.results[cu.cat][o];
-  h += `<button class="btn quiet" data-act="to_pick">← Назад: выбрать, кто отвечает${done ? '' : ' (теперь ' + WN[o] + ')'}</button>`;
+  h += `<button class="btn hi ${res ? 'pulse' : ''}" data-act="to_pick">← Назад</button>`;
   return h + `<button class="btn quiet" data-act="back">К категориям</button>`;
 }
 function viewDice(s){
