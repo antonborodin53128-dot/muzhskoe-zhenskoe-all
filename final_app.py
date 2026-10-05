@@ -601,7 +601,8 @@ html,body{height:100%;overflow:hidden}
 .tile.done{opacity:.62}
 .final{font-family:var(--display);font-weight:900;font-size:clamp(26px,3.4vw,64px);padding:1.2vh 2vw;border-radius:999px;background:rgba(255,255,255,.1)}
 .final.m{color:var(--g)} .final.w{color:var(--p)}
-.cattitle{font-family:var(--display);font-weight:900;font-size:clamp(22px,2.6vw,48px);color:var(--mist)}
+.cattitle .ic{position:absolute;right:100%;margin-right:.35em}
+.cattitle{position:relative;display:inline-block;font-family:var(--display);font-weight:900;font-size:clamp(22px,2.6vw,48px);color:var(--mist)}
 .badge{display:inline-block;padding:.35em 1.1em;border-radius:999px;font-family:var(--display);font-weight:900;font-size:clamp(24px,3.2vw,60px);background:var(--c);color:var(--c-ink)}
 .q{font-weight:800;font-size:clamp(30px,4.6vw,88px);line-height:1.15;max-width:90%;text-wrap:balance}
 .big{font-size:min(15vw,30vh);line-height:1;color:var(--chalk);--roll-ms:520ms}
@@ -611,7 +612,7 @@ html,body{height:100%;overflow:hidden}
 .vd.ok{color:var(--g)} .vd.bad{color:var(--danger)}
 .pickrow{display:flex;gap:3vw;align-items:center;justify-content:center}
 .pickside{display:flex;align-items:center;gap:1vw;font-size:clamp(14px,1.6vw,30px)}
-.pickside .badge{font-size:clamp(20px,2.4vw,44px)}
+.pickside .badge{font-size:clamp(20px,2.4vw,44px);width:clamp(150px,15vw,300px);text-align:center;padding-left:0;padding-right:0}
 .pickside .dot{font-size:clamp(14px,1.6vw,28px)}
 .listen{font-size:clamp(20px,2.4vw,44px);color:var(--mist);font-weight:600}
 .eq{display:inline-flex;gap:.2em;align-items:flex-end;height:1.4em;margin-right:.5em}
@@ -757,13 +758,13 @@ function menuHtml(s){
 }
 function pickHtml(s){
   const c = s.cats.find(x => x.id === s.pick), r = s.results[s.pick];
-  const side = (w, cl) => `<div class="pickside ${cl}"><span class="badge ${cl}">${WN[w]}</span>${dot(r[w])}</div>`;
-  return `<div class="cattitle">${c.icon} Категория</div><div class="q">${esc(c.title)}</div>
+  const side = (w, cl) => `<div class="pickside ${cl}">${w === 'man' ? dot(r[w]) : ''}<span class="badge ${cl}">${WN[w]}</span>${w === 'woman' ? dot(r[w]) : ''}</div>`;
+  return `<div class="cattitle"><span class="ic">${c.icon}</span>Категория</div><div class="q">${esc(c.title)}</div>
     <div class="pickrow">${side('man', 'm')}${side('woman', 'w')}</div><div class="listen">Кто отвечает?</div>`;
 }
 function questionHtml(s){
   const cu = s.cur, res = s.results[cu.cat][cu.who], c = s.cats.find(x => x.id === cu.cat);
-  let h = `<div class="cattitle">${c.icon} ${esc(cu.title)}</div><div class="badge ${cls(cu.who)}">${WN[cu.who]}</div>`;
+  let h = `<div class="cattitle"><span class="ic">${c.icon}</span>${esc(cu.title)}</div><div class="badge ${cls(cu.who)}">${WN[cu.who]}</div>`;
   if (cu.qfile) h += cu.revealed ? '' : `<div class="listen"><span class="eq"><i></i><i></i><i></i><i></i></span>Слушаем и угадываем</div>`;
   h += `<div class="q">${esc(cu.q)}</div>`;
   if (cu.time && !cu.revealed) h += `<div class="num big" id="big"></div>`;
@@ -776,7 +777,7 @@ function diceHtml(s){
     <div class="st">${p.bust ? 'ПЕРЕБОР!' : p.stand ? 'хватит' : d.turn === w ? 'бросает…' : 'ждёт'}</div><div class="hist">${p.dice.map(x => FACE[x - 1]).join(' ')}</div></div>`; };
   const cubes = d.last.length ? `<div class="cubes">${d.last.map(x => `<div class="cube" data-v="${x}">${FACE[x - 1]}</div>`).join('')}</div>` : '';
   const win = d.winner ? `<div class="final ${d.winner === 'man' ? 'm' : d.winner === 'woman' ? 'w' : ''}">${d.winner === 'draw' ? 'Ничья — переигрываем' : 'Победил ' + WN[d.winner] + '!'}</div>` : '';
-  return `<div class="cattitle">🎲 21 очко</div><div class="duel">${pl('man')}${pl('woman')}</div>${cubes}${win}`;
+  return `<div class="cattitle"><span class="ic">🎲</span>21 очко</div><div class="duel">${pl('man')}${pl('woman')}</div>${cubes}${win}`;
 }
 function render(){
   const s = S; if (!s) return;
