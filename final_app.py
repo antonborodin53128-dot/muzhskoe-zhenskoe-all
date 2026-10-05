@@ -611,35 +611,70 @@ html,body{height:100%;overflow:hidden}
 <script>
 __ROLL_JS__
 __NET_JS__
-/* ---------- Фон «Огоньки»: слева молотки, справа рука с ноготочками ---------- */
+/* ---------- Фон «Огоньки»: слева нарисованные молотки (зелёные), справа рука с ноготочками (розовая) ---------- */
 const Bg = (() => {
   const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let W = 0, H = 0, dpr = 1;
-  const rnd = (() => { let s = 7; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; })();
-  const items = [];
-  for (let i = 0; i < 26; i++) {
-    const man = i % 2 === 0;
-    items.push({man, x: rnd(), y: rnd(), s: .6 + rnd() * 1.1, sp: .008 + rnd() * .02, rot: rnd() * 6.28, rs: (rnd() - .5) * .4, ph: rnd() * 6.28, d: rnd()});
+  let W = 0, H = 0, dpr = 1, k = 1;
+  const GREEN = [43, 240, 138], PINK = [255, 79, 168];
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${Math.max(0, Math.min(1, a))})`;
+  function size(){
+    dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+    k = Math.max(.8, Math.min(1.8, Math.min(W, H) / 800));
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  function size(){ dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
   addEventListener('resize', size); size();
-  function frame(t){
+  // вертикальная «капсула» (палец, ручка): левый верх x,y, ширина w, высота h
+  function cap(x, y, w, h){
+    ctx.beginPath(); ctx.arc(x + w / 2, y + w / 2, w / 2, Math.PI, 0); ctx.lineTo(x + w, y + h - w / 2);
+    ctx.arc(x + w / 2, y + h - w / 2, w / 2, 0, Math.PI); ctx.closePath();
+  }
+  // Молоток в единичных координатах (≈ 1,0 × 1,3), центр в (0, 0)
+  function hammer(x, y, s, rot, a){
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+    ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(.07, 1.3 / s);
+    ctx.strokeStyle = rgba(GREEN, a); ctx.fillStyle = rgba(GREEN, a * .28);
+    cap(-.09, -.25, .18, .95); ctx.fill(); ctx.stroke();                   // ручка
+    ctx.beginPath(); ctx.moveTo(-.46, -.6); ctx.lineTo(.3, -.6);          // боёк слева, клин справа
+    ctx.quadraticCurveTo(.62, -.62, .66, -.82); ctx.lineTo(.5, -.3); ctx.lineTo(-.46, -.3); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  // Рука с ноготочками: ладонь, четыре пальца и большой; ногти закрашены плотнее
+  function hand(x, y, s, rot, a){
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+    ctx.lineCap = ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(.07, 1.3 / s);
+    ctx.strokeStyle = rgba(PINK, a); ctx.fillStyle = rgba(PINK, a * .28);
+    const fingers = [[-.3, -.56, .56], [-.12, -.74, .74], [.06, -.7, .7], [.24, -.5, .5]];
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-.34, -.02, .68, .56, .2) : ctx.rect(-.34, -.02, .68, .56); ctx.fill(); ctx.stroke();
+    fingers.forEach(f => { cap(f[0], f[1], .17, f[2]); ctx.fill(); ctx.stroke(); });
+    ctx.save(); ctx.translate(-.36, .26); ctx.rotate(-.75); cap(-.085, -.42, .17, .6); ctx.fill(); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = rgba(PINK, a * .95);
+    fingers.forEach(f => { cap(f[0] + .03, f[1] + .035, .11, .15); ctx.fill(); });
+    ctx.save(); ctx.translate(-.36, .26); ctx.rotate(-.75); cap(-.055, -.385, .11, .15); ctx.fill(); ctx.restore();
+    ctx.restore();
+  }
+  const rnd = () => Math.random();
+  const icons = Array.from({length: 22}, (_, i) => ({
+    man: i % 2 === 0, x: rnd(), y: rnd(), r: 30 + rnd() * 40, v: .012 + rnd() * .024, a: .16 + rnd() * .16,
+    w: rnd() * 6, rot: (rnd() - .5) * .9, rs: .25 + rnd() * .4,
+  }));
+  const t0 = performance.now();
+  function frame(now){
+    const t = reduce ? 0 : (now - t0) / 1000;
     ctx.clearRect(0, 0, W, H);
-    const k = Math.max(.8, Math.min(1.8, Math.min(W, H) / 800)), sec = t / 1000;
-    for (const it of items) {
-      const half = it.man ? 0 : .5;
-      const x = (half + .02 + it.x * .46 + Math.sin(sec * .3 + it.ph) * .012) * W;
-      const y = ((it.y - sec * it.sp * (reduce ? 0 : 1)) % 1 + 1) % 1 * (H + 120) - 60;
-      const size = (34 + it.s * 34) * k, a = .1 + it.d * .12;
-      ctx.save(); ctx.translate(x, y); ctx.rotate(it.rot + (reduce ? 0 : sec * it.rs));
-      const col = it.man ? '43,240,138' : '255,79,168';
-      const gr = ctx.createRadialGradient(0, 0, 0, 0, 0, size * .9); gr.addColorStop(0, `rgba(${col},${a * .9})`); gr.addColorStop(1, `rgba(${col},0)`);
-      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, size * .9, 0, 6.3); ctx.fill();
-      ctx.globalAlpha = Math.min(.55, a * 2.6); ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(it.man ? '🔨' : '💅', 0, 0);
-      ctx.restore();
-    }
+    icons.forEach(f => {
+      const y = ((f.y - t * f.v) % 1 + 1) % 1, fade = Math.min(1, y * 10, (1 - y) * 10);
+      const half = f.man ? 0 : .5;
+      const px = (half + .03 + f.x * .44 + Math.sin(t * .3 + f.w) * .012) * W, py = y * H * 1.15 - H * .07;
+      const r = f.r * k, rot = f.rot + Math.sin(t * f.rs + f.w) * .18, a = f.a * fade, col = f.man ? GREEN : PINK;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, r * 1.7);
+      g.addColorStop(0, rgba(col, f.a * .35 * fade)); g.addColorStop(1, rgba(col, 0));
+      ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(px, py, r * 1.7, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      (f.man ? hammer : hand)(px, py, r, rot, a);
+    });
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
