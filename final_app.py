@@ -47,7 +47,7 @@ BOOT = secrets.token_hex(4)
 
 
 def fresh():
-    return {"rev": 0, "touched": time.time(), "mode": "menu", "cur": None, "dice": None,
+    return {"rev": 0, "touched": time.time(), "mode": "menu", "cur": None, "pick": None, "dice": None,
             "results": {c["id"]: {"man": None, "woman": None} for c in CATS}}
 
 
@@ -78,7 +78,7 @@ def snapshot_locked():
                    qfile=side.get("qfile"), afile=side.get("afile"))
         if cur["revealed"]:
             pub["a"] = side["a"]
-    return {"rev": state["rev"], "boot": BOOT, "server_now": time.time(), "mode": state["mode"], "cur": pub,
+    return {"rev": state["rev"], "boot": BOOT, "server_now": time.time(), "mode": state["mode"], "pick": state.get("pick"), "cur": pub,
             "dice": state["dice"], "results": state["results"], "score": score_locked(),
             "cats": [{"id": c["id"], "title": c["title"], "icon": c["icon"], "time": c["time"]} for c in CATS]}
 
@@ -127,18 +127,23 @@ def finish_turn_locked(d):
 
 def apply(c):
     a = c.get("a")
-    if a == "pick":
+    if a == "open":
+        if c.get("cat") in CAT:
+            state["mode"], state["cur"], state["pick"] = "pick", None, c["cat"]
+    elif a == "pick":
         if c.get("cat") in CAT and c.get("who") in WHO:
-            state["mode"] = "q"
+            state["mode"], state["pick"] = "q", None
             state["cur"] = {"cat": c["cat"], "who": c["who"], "started_at": None, "revealed": False, "audio": {"kind": None, "n": 0}}
     elif a == "back":
-        state["mode"], state["cur"] = "menu", None
+        state["mode"], state["cur"], state["pick"] = "menu", None, None
     elif state["mode"] == "q" and state["cur"]:
         cur = state["cur"]
         if a == "mark" and c.get("r") in ("ok", "bad"):
             state["results"][cur["cat"]][cur["who"]] = c["r"]
             cur["revealed"] = True
             cur["audio"] = {"kind": None, "n": cur["audio"]["n"] + 1}
+        elif a == "to_pick":                 # вернуться к выбору «Man / Woman» в той же категории
+            state["mode"], state["pick"], state["cur"] = "pick", cur["cat"], None
         elif a == "reveal":
             cur["revealed"] = True
         elif a == "timer":
@@ -439,7 +444,7 @@ __NET_JS__
 const CATS = __CATS__;
 const CATBY = Object.fromEntries(CATS.map(c => [c.id, c]));
 const app = document.getElementById('app');
-let pend = null, ask = 0, shakeOn = false, shakeNeeded = false, lastKey = '';
+let ask = 0, shakeOn = false, shakeNeeded = false, lastKey = '';
 const sym = r => r === 'ok' ? '✓' : r === 'bad' ? '✗' : '–';
 function chips(r){ return ['man', 'woman'].map(w => `<i class="chip ${cls(w)} ${r[w] || ''}">${w === 'man' ? 'M' : 'W'} ${sym(r[w])}</i>`).join(''); }
 function topBar(){ return `<div class="top"><span class="wordmark"><i></i>Финал</span><a class="link" href="${BASE}screen" target="_blank" rel="noopener">Экран для гостей</a></div>`; }
@@ -451,11 +456,11 @@ function resetZone(){
     <div class="two"><button class="btn quiet" data-act="noask">Отмена</button><button class="btn" data-act="reset" ${ready ? '' : 'disabled'}>Да, сбросить</button></div></div></div>`;
 }
 function viewMenu(s){
-  if (pend) {
-    const c = CATBY[pend], r = s.results[pend];
+  if (s.mode === 'pick' && s.pick) {
+    const c = CATBY[s.pick], r = s.results[s.pick];
     return `${topBar()}<h2>${c.icon} ${esc(c.title)} — кто отвечает?</h2>
-      <button class="btn m" style="min-height:96px;font-size:26px" data-act="pick" data-who="man">Man ${r.man ? '<small>(уже отвечал)</small>' : ''}</button>
-      <button class="btn w" style="min-height:96px;font-size:26px" data-act="pick" data-who="woman">Woman ${r.woman ? '<small>(уже отвечала)</small>' : ''}</button>
+      <button class="btn m" style="min-height:96px;font-size:26px" data-act="pick" data-who="man">Man ${r.man ? '<small>(уже ответил: ' + sym(r.man) + ')</small>' : ''}</button>
+      <button class="btn w" style="min-height:96px;font-size:26px" data-act="pick" data-who="woman">Woman ${r.woman ? '<small>(уже ответила: ' + sym(r.woman) + ')</small>' : ''}</button>
       <button class="btn quiet" data-act="cancel">Назад</button>`;
   }
   const all = CATS.every(c => s.results[c.id].man && s.results[c.id].woman);
@@ -474,6 +479,8 @@ function viewQuestion(s){
   if (c.time) h += `<div class="timer"><div class="num" id="tm">${c.time}</div><button class="btn quiet" data-act="timer">${cu.started_at ? 'Заново' : 'Старт ' + c.time + ' с'}</button></div>`;
   h += `<div class="two"><button class="btn good ${res === 'ok' ? 'sel' : ''}" data-act="mark" data-r="ok">Правильно</button><button class="btn bad ${res === 'bad' ? 'sel' : ''}" data-act="mark" data-r="bad">Ошибка</button></div>`;
   h += res ? `<div class="verdict ${res}">${res === 'ok' ? 'Засчитано +1' : 'Ошибка, без очка'}</div>` : `<div class="hint">Оценка появится на экране гостей вместе с ответом</div>`;
+  const o = other(cu.who), done = s.results[cu.cat][o];
+  h += `<button class="btn quiet" data-act="to_pick">← Назад: выбрать, кто отвечает${done ? '' : ' (теперь ' + WN[o] + ')'}</button>`;
   return h + `<button class="btn quiet" data-act="back">К категориям</button>`;
 }
 function viewDice(s){
@@ -496,7 +503,7 @@ function viewDice(s){
 function render(){
   if (!S) return;
   try {
-    const key = JSON.stringify([S.mode, S.cur && [S.cur.cat, S.cur.who, S.cur.started_at], S.results, S.dice, pend, ask > 0, ask && Date.now() - ask > 700, shakeOn, shakeNeeded, S.score]);
+    const key = JSON.stringify([S.mode, S.cur && [S.cur.cat, S.cur.who, S.cur.started_at], S.results, S.dice, S.pick, ask > 0, ask && Date.now() - ask > 700, shakeOn, shakeNeeded, S.score]);
     if (key === lastKey) return; lastKey = key;
     app.innerHTML = S.mode === 'q' && S.cur ? viewQuestion(S) : S.mode === 'dice' && S.dice ? viewDice(S) : viewMenu(S);
     tick();
@@ -509,7 +516,7 @@ function tick(){
   if (el.textContent !== String(v)) el.textContent = v;
 }
 setInterval(tick, 250);
-window.onState = s => { if (s.mode !== 'menu') pend = null; render(); };
+window.onState = s => { render(); };
 function onMotion(e){
   const a = e.accelerationIncludingGravity || e.acceleration; if (!a) return;
   const m = Math.hypot(a.x || 0, a.y || 0, a.z || 0), now = Date.now();
@@ -530,9 +537,10 @@ if (window.DeviceMotionEvent) {
 app.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
   const a = b.dataset.act;
-  if (a === 'cat') { pend = b.dataset.id; lastKey = ''; render(); }
-  else if (a === 'cancel') { pend = null; lastKey = ''; render(); }
-  else if (a === 'pick') { send({a: 'pick', cat: pend, who: b.dataset.who}); pend = null; }
+  if (a === 'cat') send({a: 'open', cat: b.dataset.id});
+  else if (a === 'cancel') send({a: 'back'});
+  else if (a === 'pick') send({a: 'pick', cat: S.pick, who: b.dataset.who});
+  else if (a === 'to_pick') send({a: 'to_pick'});
   else if (a === 'back') send({a: 'back'});
   else if (a === 'mark') send({a: 'mark', r: b.dataset.r});
   else if (a === 'timer') send({a: 'timer'});
@@ -544,7 +552,7 @@ app.addEventListener('click', e => {
   else if (a === 'shake') enableShake();
   else if (a === 'ask') { ask = Date.now(); lastKey = ''; render(); setTimeout(render, 760); setTimeout(() => { if (ask && Date.now() - ask >= 10000) { ask = 0; lastKey = ''; render(); } }, 10100); }
   else if (a === 'noask') { ask = 0; lastKey = ''; render(); }
-  else if (a === 'reset') { ask = 0; pend = null; send({a: 'reset'}); }
+  else if (a === 'reset') { ask = 0; send({a: 'reset'}); }
 });
 </script>
 </body></html>
@@ -591,6 +599,10 @@ html,body{height:100%;overflow:hidden}
 .ansbox{font-family:var(--display);font-weight:900;font-size:clamp(28px,4vw,76px);color:var(--c);line-height:1.15;max-width:92%}
 .vd{font-weight:800;font-size:clamp(22px,2.6vw,48px)}
 .vd.ok{color:var(--g)} .vd.bad{color:var(--danger)}
+.pickrow{display:flex;gap:3vw;align-items:center;justify-content:center}
+.pickside{display:flex;align-items:center;gap:1vw;font-size:clamp(14px,1.6vw,30px)}
+.pickside .badge{font-size:clamp(20px,2.4vw,44px)}
+.pickside .dot{font-size:clamp(14px,1.6vw,28px)}
 .listen{font-size:clamp(20px,2.4vw,44px);color:var(--mist);font-weight:600}
 .eq{display:inline-flex;gap:.2em;align-items:flex-end;height:1.4em;margin-right:.5em}
 .eq i{width:.22em;background:var(--chalk);border-radius:2px;animation:eq 1s ease-in-out infinite}
@@ -733,6 +745,12 @@ function menuHtml(s){
   return `<div class="wordmark"><i></i>Финал</div><div class="tiles">${s.cats.map(c => { const r = s.results[c.id], done = r.man && r.woman;
     return `<div class="tile ${done ? 'done' : ''}"><span class="l m">${dot(r.man)}</span><span class="t">${c.icon} ${esc(c.title)}</span><span class="r w">${dot(r.woman)}</span></div>`; }).join('')}</div>${fin}`;
 }
+function pickHtml(s){
+  const c = s.cats.find(x => x.id === s.pick), r = s.results[s.pick];
+  const side = (w, cl) => `<div class="pickside ${cl}"><span class="badge ${cl}">${WN[w]}</span>${dot(r[w])}</div>`;
+  return `<div class="cattitle">${c.icon} Категория</div><div class="q">${esc(c.title)}</div>
+    <div class="pickrow">${side('man', 'm')}${side('woman', 'w')}</div><div class="listen">Кто отвечает?</div>`;
+}
 function questionHtml(s){
   const cu = s.cur, res = s.results[cu.cat][cu.who], c = s.cats.find(x => x.id === cu.cat);
   let h = `<div class="cattitle">${c.icon} ${esc(cu.title)}</div><div class="badge ${cls(cu.who)}">${WN[cu.who]}</div>`;
@@ -756,10 +774,10 @@ function render(){
     document.getElementById('sm').classList.toggle('on', !!(s.cur && s.cur.who === 'man') || (s.dice && !s.dice.winner && s.dice.turn === 'man'));
     document.getElementById('sw').classList.toggle('on', !!(s.cur && s.cur.who === 'woman') || (s.dice && !s.dice.winner && s.dice.turn === 'woman'));
     setRoll(document.getElementById('nm'), s.score.man); setRoll(document.getElementById('nw'), s.score.woman);
-    const key = JSON.stringify([s.mode, s.cur && [s.cur.cat, s.cur.who, s.cur.revealed, s.cur.started_at, s.cur.audio && s.cur.audio.kind], s.results, s.dice, s.score]);
+    const key = JSON.stringify([s.mode, s.pick, s.cur && [s.cur.cat, s.cur.who, s.cur.revealed, s.cur.started_at, s.cur.audio && s.cur.audio.kind], s.results, s.dice, s.score]);
     if (key !== lastKey) {
       lastKey = key;
-      stage.innerHTML = s.mode === 'q' && s.cur ? questionHtml(s) : s.mode === 'dice' && s.dice ? diceHtml(s) : menuHtml(s);
+      stage.innerHTML = s.mode === 'pick' && s.pick ? pickHtml(s) : s.mode === 'q' && s.cur ? questionHtml(s) : s.mode === 'dice' && s.dice ? diceHtml(s) : menuHtml(s);
       // звуки событий
       const res = s.cur ? s.results[s.cur.cat][s.cur.who] : null;
       const rk = s.cur ? s.cur.cat + s.cur.who + ':' + res : '';
