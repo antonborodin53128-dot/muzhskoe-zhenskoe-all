@@ -41,7 +41,7 @@ NAME = {"man": "Man", "woman": "Woman"}
 AUDIO_NAME = re.compile(r"^[mw]_[qa]\.mp3$")
 
 app = Flask(__name__)
-import rules; rules.install(app, "final")
+import rules; rules.install(app, "final", in_js=True)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", ping_interval=15, ping_timeout=25)
 lock = RLock()
 BOOT = secrets.token_hex(4)
@@ -492,7 +492,7 @@ const app = document.getElementById('app');
 let finAsk = 0, ask = 0, shakeOn = false, shakeNeeded = false, lastKey = '';
 const sym = r => r === 'ok' ? '✓' : r === 'bad' ? '✗' : '–';
 function chips(r){ return ['man', 'woman'].map(w => `<i class="chip ${cls(w)} ${r[w] || ''}">${w === 'man' ? 'M' : 'W'} ${sym(r[w])}</i>`).join(''); }
-function topBar(){ return `<div class="top"><span class="wordmark"><i></i>Финал</span><a class="link" href="${BASE}screen" target="_blank" rel="noopener">Экран для гостей</a></div>`; }
+function topBar(){ return `<div class="top"><span class="wordmark"><i></i>Финал</span><a class="link" id="rl-open" href="#" role="button">Правила</a></div>`; }
 function board(s){ return `<div class="board"><div class="side m"><b>Man</b><span class="num">${s.score.man}</span></div><div class="side w"><b>Woman</b><span class="num">${s.score.woman}</span></div></div>`; }
 function resetZone(){
   if (!ask) return `<div class="resetzone"><button class="reset-open" data-act="ask">Сбросить конкурс</button></div>`;

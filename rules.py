@@ -1,7 +1,7 @@
 """Правила конкурсов, написанные от лица ведущего (текст, который он говорит гостям). Подключается одной строкой: rules.install(app, "<ключ>").
 На главной странице ведущего (путь «/») в правом верхнем углу появляется надпись «Правила»;
 по нажатию открывается окно с текстом правил."""
-import html
+import html, re
 from flask import request
 
 RULES = {
@@ -67,8 +67,8 @@ RULES = {
 }
 
 CSS = """
-#rl-open{position:absolute;top:2px;right:14px;z-index:90;border:0;background:none;color:rgba(255,255,255,.82);font:700 12px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;letter-spacing:.02em;text-decoration:underline;text-underline-offset:3px;padding:3px 2px;cursor:pointer}
-#rl-open:hover{color:#fff}
+#rl-open.rl-corner{position:absolute;top:2px;right:14px;z-index:90;border:0;background:none;color:rgba(255,255,255,.82);font:700 12px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;letter-spacing:.02em;text-decoration:underline;text-underline-offset:3px;padding:3px 2px;cursor:pointer}
+#rl-open.rl-corner:hover{color:#fff}
 #rl-ov{position:fixed;inset:0;z-index:300;display:none;align-items:center;justify-content:center;padding:14px;background:rgba(3,6,5,.78);backdrop-filter:blur(6px)}
 #rl-ov.on{display:flex}
 #rl-box{width:min(640px,100%);max-height:90vh;overflow:auto;border-radius:18px;padding:20px 20px 22px;background:#0c1612;color:#eef3ef;border:1px solid rgba(255,255,255,.18);font:500 16px/1.5 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;box-shadow:0 20px 70px rgba(0,0,0,.6)}
@@ -80,35 +80,48 @@ CSS = """
 """
 
 JS = """
-(function(){var o=document.getElementById('rl-ov'),b=document.getElementById('rl-open');
+(function(){var o=document.getElementById('rl-ov');
 function s(v){o.classList.toggle('on',v)}
-b.addEventListener('click',function(){s(true)});
-document.getElementById('rl-close').addEventListener('click',function(){s(false)});
-o.addEventListener('click',function(e){if(e.target===o)s(false)});
+document.addEventListener('click',function(e){var t=e.target;
+ if(t.closest&&t.closest('#rl-open')){e.preventDefault();s(true)}
+ else if(t===o||(t.closest&&t.closest('#rl-close')))s(false)});
 addEventListener('keydown',function(e){if(e.key==='Escape')s(false)});})();
 """
 
+GUEST_LINK = re.compile(r'<a class="link" href="[^"]*screen"[^>]*>Экран для гостей</a>')
+TOP_END = re.compile(r'(<div class="top">.*?)(</div>)|(<header>.*?)(</header>)', re.S)
+PLAIN_LINK = '<a class="link" id="rl-open" href="#" role="button" style="font:700 14px/1 system-ui,sans-serif;color:rgba(255,255,255,.82);text-decoration:underline;text-underline-offset:3px;cursor:pointer">Правила</a>'
+OPEN_LINK = '<a class="link" id="rl-open" href="#" role="button">Правила</a>'
 
-def snippet(key):
+
+def snippet(key, corner=True):
     title, say, cheat = RULES[key]
     e = html.escape
     body = f"<h2>Правила: {e(title)}</h2>" + "".join((f"<h3>{e(p)}</h3>" if p.endswith(":") else f"<p>{e(p)}</p>") for p in say)
-    return (f"<style>{CSS}</style><button id=\"rl-open\" type=\"button\">Правила</button>"
+    btn = "<button id=\"rl-open\" class=\"rl-corner\" type=\"button\">Правила</button>" if corner else ""
+    return (f"<style>{CSS}</style>{btn}"
             f"<div id=\"rl-ov\"><div id=\"rl-box\">{body}<button id=\"rl-close\" type=\"button\">Закрыть</button></div></div>"
             f"<script>{JS}</script>")
 
 
-def install(app, key):
-    snip = snippet(key)
-
+def install(app, key, in_js=False):
+    """in_js=True: кнопку «Правила» (id=rl-open) рисует сам клиентский код страницы, здесь только окно."""
     @app.after_request
     def _rules(resp):
         try:
             if (request.path == "/" and resp.status_code == 200 and resp.mimetype == "text/html"
                     and not resp.direct_passthrough):
                 t = resp.get_data(as_text=True)
-                if "</body>" in t and "rl-open" not in t:
-                    resp.set_data(t.replace("</body>", snip + "</body>", 1))
+                if "</body>" not in t or "rl-ov" in t:
+                    return resp
+                inline = in_js
+                if GUEST_LINK.search(t):
+                    t = GUEST_LINK.sub(OPEN_LINK, t); inline = True      # «Правила» вместо ссылки на экран гостей
+                elif not in_js:
+                    t2 = TOP_END.sub(lambda m: (m.group(1) or m.group(3)) + PLAIN_LINK + (m.group(2) or m.group(4)), t, count=1)
+                    if t2 != t: t, inline = t2, True                    # нет такой ссылки: «Правила» в конец шапки
+                t = t.replace("</body>", snippet(key, corner=not inline) + "</body>", 1)
+                resp.set_data(t)
         except Exception:
             pass
         return resp
