@@ -27,11 +27,14 @@ h1{font-size:52px;margin:0 0 42px}.section{margin:42px 0}.title{font-size:22px;f
 .action:hover{border-color:#20ee78}.action span{color:#20ee78}.action.setup{background:#101713;border-color:#3c4b43}.small{font-size:13px;color:#82968c;margin-top:5px;font-weight:normal}
 .qrbox{margin-top:24px;padding:22px;border:1px solid #20543a;border-radius:17px;background:#07170f;display:flex;align-items:center;gap:22px}
 .qrbox img{width:150px;height:150px;background:#fff;padding:8px;border-radius:12px}.qrtitle{font-size:19px;font-weight:900}.qrhint{font-size:13px;color:#82968c;margin-top:7px;line-height:1.4}
+.top{gap:18px;align-items:flex-start}.hostqr{flex:none;text-align:center;font-size:12px;font-weight:700;color:#82968c}.hostqr img{display:block;width:112px;height:112px;background:#fff;padding:6px;border-radius:10px;margin-bottom:6px}
+@media(max-width:520px){.hostqr img{width:76px;height:76px}.logo{font-size:16px;white-space:nowrap}.m{padding:6px 8px}}
 @media(max-width:520px){.qrbox{flex-direction:column;text-align:center}}
 @media(max-width:800px){.grid{grid-template-columns:1fr}.card{height:120px}h1{font-size:39px}.contest{font-size:45px}}
 """
 HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Мужское / Женское</title><style>{{css}}</style></head><body><div class="wrap">
-<div class="top"><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="slash">/</span> <span class="fword">ЖЕНСКОЕ</span></div></div>
+<div class="top"><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="slash">/</span> <span class="fword">ЖЕНСКОЕ</span></div>
+<div class="hostqr"><img src="{{qr}}" alt="QR для ведущего"><div>QR для ведущего</div></div></div>
 <h1>КОНКУРСЫ</h1>
 <div class="section"><div class="title">МУЖСКОЕ</div><div class="grid">
 <a class="card" href="/contest/voice">VOICE METER</a><a class="card" href="/contest/balls">ШАРИКИ</a><a class="card" href="/contest/hamster">ХОМЯК</a>
@@ -60,7 +63,7 @@ def absolute(path):
     return request.url_root.rstrip("/") + path
 
 @app.get("/")
-def home(): return render_template_string(HOME,css=CSS)
+def home(): return render_template_string(HOME,css=CSS,qr=qr_data(absolute("/")))
 
 @app.get("/contest/balls")
 def balls_menu():
