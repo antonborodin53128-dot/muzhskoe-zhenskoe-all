@@ -455,6 +455,51 @@ def on_typing(data=None):
     publish(gid, snaps)
 
 
+# Клавиатура с других страниц сборника (лаунчер, меню конкурсов): клавиша приходит на сервер, он меняет
+# набранный текст сам и рассылает экрану и пульту. Клавиши — по положению на клавиатуре, раскладка не важна.
+KEYMAP = {"KeyQ": "й", "KeyW": "ц", "KeyE": "у", "KeyR": "к", "KeyT": "е", "KeyY": "н", "KeyU": "г", "KeyI": "ш", "KeyO": "щ",
+          "KeyP": "з", "BracketLeft": "х", "BracketRight": "ъ", "KeyA": "ф", "KeyS": "ы", "KeyD": "в", "KeyF": "а", "KeyG": "п",
+          "KeyH": "р", "KeyJ": "о", "KeyK": "л", "KeyL": "д", "Semicolon": "ж", "Quote": "э", "KeyZ": "я", "KeyX": "ч",
+          "KeyC": "с", "KeyV": "м", "KeyB": "и", "KeyN": "т", "KeyM": "ь", "Comma": "б", "Period": "ю", "Backquote": "ё", "Minus": "-"}
+
+
+def typing_now():
+    with lock:
+        return G[GID]["phase"] == "typing"
+
+
+def remote_key(code, key=""):
+    """Клавиша с другой страницы. True — клавиша относится к Диктанту и принята (идёт набор слова)."""
+    code, key = str(code or "")[:24], str(key or "")[:4]
+    with lock:
+        g = G[GID]
+        if g["phase"] != "typing":
+            return False
+        if code == "Backspace":
+            g["typed"] = g["typed"][:-1]
+        elif code in ("Enter", "NumpadEnter"):
+            if not submit_locked(g):          # пустой ответ не отправляем, как и на экране
+                return True
+            save_locked()
+        else:
+            ch = KEYMAP.get(code) or (key.lower() if len(key) == 1 and key.lower() in ALLOWED else "")
+            if not ch:
+                return False
+            if len(g["typed"]) < MAX_TYPED:
+                g["typed"] += ch
+        snaps = snaps_locked(GID)
+    publish(GID, snaps)
+    return True
+
+
+@app.post("/api/key")
+def api_key():
+    d = request.get_json(silent=True)
+    d = d if isinstance(d, dict) else {}
+    remote_key(d.get("code"), d.get("key"))
+    return ("", 204)
+
+
 @socketio.on("submit")
 def on_submit(data=None):
     data = payload(data)

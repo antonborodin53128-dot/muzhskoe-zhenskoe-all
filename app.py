@@ -9,6 +9,7 @@ from kolcebros_app import app as kolcebros_app
 from dictation_app import app as dictation_app
 from final_app import app as final_app
 import io, base64
+import hamster_app as hamster_mod, dictation_app as dictation_mod
 import active
 import qrcode
 
@@ -135,21 +136,30 @@ var failed=false;function go(){try{localStorage.setItem('gs_started','1')}catch(
 </script></body></html>"""
 
 
-# Клавиатура для «Хомяка» работает на любой странице сборника: лаунчер, меню конкурсов, единый гостевой экран.
-# Буква уходит на сервер Хомяка; тот засчитывает её только пока идёт игра, в остальное время игнорирует.
-HAMSTER_KEYS = r"""<script>(function(){var q=Promise.resolve();   // нажатия уходят строго по очереди, чтобы не перепутались по дороге
+# Клавиатура для конкурсов с клавиатурой («Хомяк», «Диктант») работает на любой странице сборника: лаунчер,
+# меню конкурсов, единый гостевой экран. На едином экране клавиша уходит прямо в конкурс во фрейме, как будто
+# нажали в нём; с остальных страниц — на сервер (/api/key), он отдаёт её конкурсу, который сейчас идёт.
+KEYS_JS = r"""<script>(function(){var q=Promise.resolve();   // нажатия уходят строго по очереди, чтобы не перепутались по дороге
+var SERVER_KEYS=/^(Key[A-Z]|Backspace|Enter|NumpadEnter|Backquote|Comma|Period|Semicolon|Quote|BracketLeft|BracketRight|Minus)$/;
+function frameWin(){try{var f=document.getElementById('fr'),w=f&&!f.hidden&&f.contentWindow;return w&&w.location&&w.location.pathname?w:null}catch(x){return null}}
 addEventListener('keydown',function(e){
-if(e.repeat||e.ctrlKey||e.metaKey||e.altKey)return;var t=e.target;
-if(e.code==='F2'){try{var g=document.getElementById('fr'),v=g&&!g.hidden&&g.contentWindow;if(v&&v.Diag){e.preventDefault();v.Diag.toggle()}}catch(x){}return}   // F2 — диагностика Хомяка во фрейме
-
+if(e.ctrlKey||e.metaKey||e.altKey||e.isComposing)return;var t=e.target;
 if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))return;
-var m=/^Key([A-Z])$/.exec(e.code);if(!m)return;
-try{var f=document.getElementById('fr'),w=f&&!f.hidden&&f.contentWindow;if(w&&typeof w.pressKey==='function'&&w.pressKey(m[1]))return}catch(x){}   // Хомяк во фрейме засчитал сам; иначе — запросом на сервер
-var body=JSON.stringify({letter:m[1]});
-q=q.then(function(){return fetch('/men/hamster/api/key',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true})}).catch(function(){})})})();</script>"""
-HOME=HOME.replace("</body></html>",HAMSTER_KEYS+"</body></html>")
-MENU=MENU.replace("</body></html>",HAMSTER_KEYS+"</body></html>")
-SCREEN_SHELL=SCREEN_SHELL.replace("</body></html>",HAMSTER_KEYS+"</body></html>")
+var w=frameWin(),p=w?w.location.pathname:'';
+if(e.code==='F2'){if(w&&w.Diag){e.preventDefault();w.Diag.toggle()}return}   // F2 — диагностика Хомяка во фрейме
+if(p.indexOf('/women/diktant/')===0){   // Диктант во фрейме: клавишу — ему, как будто нажали прямо в нём (со звуком)
+ if(e.code==='Backspace'||e.code==='Enter'||e.code==='Space'||e.code==='Quote'||e.code==='Slash')e.preventDefault();
+ try{w.dispatchEvent(new w.KeyboardEvent('keydown',{key:e.key,code:e.code,repeat:e.repeat,bubbles:true,cancelable:true}))}catch(x){}
+ return}
+if(e.repeat)return;
+var m=/^Key([A-Z])$/.exec(e.code);
+if(m&&w&&typeof w.pressKey==='function'){try{if(w.pressKey(m[1]))return}catch(x){}}   // Хомяк во фрейме засчитал сам
+if(!SERVER_KEYS.test(e.code))return;
+var body=JSON.stringify({code:e.code,key:e.key});
+q=q.then(function(){return fetch('/api/key',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true})}).catch(function(){})})})();</script>"""
+HOME=HOME.replace("</body></html>",KEYS_JS+"</body></html>")
+MENU=MENU.replace("</body></html>",KEYS_JS+"</body></html>")
+SCREEN_SHELL=SCREEN_SHELL.replace("</body></html>",KEYS_JS+"</body></html>")
 
 
 def qr_data(url):
@@ -172,6 +182,24 @@ def api_launch(key):
     from flask import jsonify
     ok = active.clear() if key == "splash" else active.launch(key)
     return jsonify(ok=ok), (200 if ok else 404)
+
+@app.post("/api/key")
+def api_key_router():
+    """Клавиша с лаунчера, меню или единого экрана — конкурсу, который сейчас идёт.
+    Сначала тот, что запущен на гостевом экране; если там другой — тот, где сейчас идёт игра."""
+    import re
+    d = request.get_json(silent=True)
+    d = d if isinstance(d, dict) else {}
+    code, key = str(d.get("code") or "")[:24], str(d.get("key") or "")[:4]
+    letter = re.fullmatch(r"Key([A-Z])", code)
+    shown = active.get_active().get("key")
+    order = ["diktant", "hamster"] if shown == "diktant" else ["hamster", "diktant"]
+    for name in order:
+        if name == "hamster" and letter and (shown == "hamster" or hamster_mod.playing()):
+            hamster_mod.external_key(letter.group(1)); break
+        if name == "diktant" and (shown == "diktant" or dictation_mod.typing_now()) and dictation_mod.remote_key(code, key):
+            break
+    return ("", 204)
 
 @app.get("/screen")
 def unified_screen():
