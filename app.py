@@ -136,6 +136,18 @@ var failed=false;function go(){try{localStorage.setItem('gs_started','1')}catch(
 </script></body></html>"""
 
 
+# Клавиатура для «Хомяка» работает на любой странице сборника: лаунчер, меню конкурсов, единый гостевой экран.
+# Буква уходит на сервер Хомяка; тот засчитывает её только пока идёт игра, в остальное время игнорирует.
+HAMSTER_KEYS = r"""<script>(function(){addEventListener('keydown',function(e){
+if(e.repeat||e.ctrlKey||e.metaKey||e.altKey)return;var t=e.target;
+if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))return;
+var m=/^Key([A-Z])$/.exec(e.code);if(!m)return;
+fetch('/men/hamster/api/key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({letter:m[1]}),keepalive:true}).catch(function(){})})})();</script>"""
+HOME=HOME.replace("</body></html>",HAMSTER_KEYS+"</body></html>")
+MENU=MENU.replace("</body></html>",HAMSTER_KEYS+"</body></html>")
+SCREEN_SHELL=SCREEN_SHELL.replace("</body></html>",HAMSTER_KEYS+"</body></html>")
+
+
 def qr_data(url):
     img=qrcode.make(url)
     buf=io.BytesIO()

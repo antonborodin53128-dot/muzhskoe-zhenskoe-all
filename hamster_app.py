@@ -26,7 +26,6 @@ MAX_PARTICIPANTS = 30
 LETTERS = "ABCDEFGHIJKLMNPQRSTUVWXYZ"
 
 app = Flask(__name__)
-import rules; rules.install(app, "hamster")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 lock = Lock()
 
@@ -132,22 +131,27 @@ def on_start_timer(data=None):
             broadcast_locked()
 
 
-@socketio.on("key")
-def on_key(data=None):
-    letter = str(payload(data).get("letter", "")).upper()
+def apply_key_locked(letter):
+    """Нажатая буква: верная — очко и новая буква, неверная — промах. Вне игры — игнорируется."""
+    letter = str(letter or "").upper()
     if len(letter) != 1 or letter not in LETTERS:
         return
+    player = current_player_locked()
+    if not player or phase_locked() != "play":
+        return
+    if letter == state["letter"]:
+        player["score"] += 1
+        state["letter"] = pick_letter(letter)
+        state["bump"] += 1
+    else:
+        state["wrong"] += 1
+    broadcast_locked()
+
+
+@socketio.on("key")
+def on_key(data=None):
     with lock:
-        player = current_player_locked()
-        if not player or phase_locked() != "play":
-            return
-        if letter == state["letter"]:
-            player["score"] += 1
-            state["letter"] = pick_letter(letter)
-            state["bump"] += 1
-        else:
-            state["wrong"] += 1
-        broadcast_locked()
+        apply_key_locked(payload(data).get("letter", ""))
 
 
 @socketio.on("score")
@@ -236,6 +240,15 @@ def no_cache(resp):
 @app.get("/")
 def control():
     return render_template_string(CONTROL_HTML, base=base_path(), theme_css=THEME_CSS, client_js=CLIENT_JS)
+
+
+@app.post("/api/key")
+def api_key():
+    """Буква с другой страницы сборника (лаунчер, меню, единый экран): там нет своего соединения с Хомяком."""
+    data = request.get_json(silent=True)
+    with lock:
+        apply_key_locked(payload(data).get("letter", ""))
+    return ("", 204)
 
 
 @app.get("/screen")
@@ -719,7 +732,6 @@ body{background:radial-gradient(60% 70% at 50% 55%,var(--signal-soft),transparen
 /* кнопка звука */
 .sound{position:fixed;right:20px;bottom:20px;z-index:50;border:1px solid var(--line);background:rgba(13,38,27,.9);color:var(--chalk);border-radius:999px;padding:12px 20px;font-weight:600;font-size:16px;cursor:pointer;transition:opacity .4s}
 .sound:hover{border-color:var(--signal)}
-.sound:not(.off){animation:sndlate .4s ease 2.5s both}@keyframes sndlate{from{opacity:0}to{opacity:1}}
 .sound.off{opacity:0;pointer-events:none}
 .who{font-family:var(--display);font-weight:800;font-size:clamp(32px,4.2vw,80px);line-height:1}
 .count{font-size:min(27vw,42vh);line-height:1;color:var(--signal);margin:1.5vh 0 0;filter:drop-shadow(0 0 40px var(--signal-soft))}
