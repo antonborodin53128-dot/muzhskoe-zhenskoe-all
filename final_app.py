@@ -819,6 +819,7 @@ const sfx = {
   roll(){ for (let i = 0; i < 7; i++) tone(300 + Math.random() * 500, i * .07, .06, 'square', .06); },
   win(){ [523, 659, 784, 1047].forEach((f, i) => tone(f, i * .13, .4)); },
   time(){ tone(220, 0, .6, 'sawtooth', .12); },
+  clock(v){ const last = v <= 5; tone(last ? 1040 : 760, 0, last ? .09 : .05, 'square', last ? .09 : .05); if (last) tone(520, .1, .06, 'sine', .05); },
   tick(i){ tone(520 + (i % 8) * 40, 0, .05, 'square', .05); },
   pick(){ tone(660, 0, .12, 'triangle', .14); tone(990, .09, .28, 'triangle', .14); }
 };
@@ -1067,6 +1068,7 @@ function render(){
     tick();
   } catch (e) { console.error(e); }
 }
+let tickKey = '', tickV = -1;
 function tick(){
   const el = document.getElementById('big'); if (!el || !S || !S.cur) return;
   const t = S.cur.time, st = S.cur.started_at;
@@ -1074,6 +1076,11 @@ function tick(){
   setRoll(el, String(v), {up: false});
   el.classList.toggle('low', !!st && v <= 5);
   if (st && v === 0 && timeFired !== String(st)) { timeFired = String(st); if (unlocked) sfx.time(); }
+  // Тиканье: «Поиск предмета» — каждую секунду, «Математика» — только последние 5 секунд.
+  const win = S.cur.cat === 'find' ? 99 : S.cur.cat === 'math' ? 5 : 0;
+  const key = st ? String(st) : '';
+  if (key !== tickKey) { tickKey = key; tickV = -1; }
+  if (st && win && v > 0 && v <= win && v !== tickV) { if (unlocked) sfx.clock(v); tickV = v; }
 }
 setInterval(tick, 200);
 window.onState = render;
