@@ -720,12 +720,9 @@ html,body{height:100%;overflow:hidden}
 .dres,.final{transition:opacity .35s,transform .45s cubic-bezier(.2,1.4,.3,1)}
 .stage .dres.hold,.stage .final.hold{opacity:0 !important;transform:scale(.6);animation:none}
 .dstat{font-family:var(--display);font-weight:800;font-size:clamp(22px,3vw,56px);color:var(--c);text-align:center}
-.startov{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:radial-gradient(80% 80% at 50% 50%,rgba(6,12,9,.9),rgba(8,6,8,.97));backdrop-filter:blur(10px);transition:opacity .5s}
-.startbox{display:flex;flex-direction:column;align-items:center;gap:3.2vh;text-align:center;padding:0 5vw}
-.startbox .wordmark{font-size:clamp(28px,4vw,72px)}
-.startbtn{border:0;border-radius:999px;padding:.7em 1.6em;font-family:var(--display);font-weight:800;font-size:clamp(22px,2.8vw,52px);background:linear-gradient(100deg,var(--g),var(--p));color:#10120f;box-shadow:0 0 70px rgba(255,255,255,.12);animation:startpulse 1.8s ease-in-out infinite}
-@keyframes startpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
-.starthint{color:var(--mist);font-weight:600;font-size:clamp(14px,1.4vw,26px);max-width:34em}
+.startov{position:fixed;right:20px;bottom:20px;z-index:200;opacity:0;pointer-events:none;transition:opacity .4s}
+.startov.show{opacity:1;pointer-events:auto}
+.startbtn{border:1px solid var(--line);background:rgba(13,38,27,.92);color:var(--chalk);border-radius:999px;padding:12px 20px;font-weight:600;font-size:16px;font-family:inherit;cursor:pointer}
 @media (max-width:900px){.screen{grid-template-columns:1fr;grid-template-rows:auto 1fr;gap:1vh}.sidecol{flex-direction:row;padding:1vh 4vw;justify-content:space-around}.sidecol .num{font-size:12vw}}
 </style></head>
 <body>
@@ -736,11 +733,7 @@ html,body{height:100%;overflow:hidden}
   <section class="stage" id="stage"></section>
   <div class="sidecol w" id="sw"><div class="nm">Woman</div><div class="num" id="nw">0</div><div class="un" id="uw">очков</div></div>
 </main>
-<div class="startov" id="startov"><div class="startbox">
-  <div class="wordmark"><i></i>Финал</div>
-  <button class="startbtn" id="snd">🔊 Включить звук и начать</button>
-  <div class="starthint">Нажмите один раз: после этого звук и музыка в конкурсе будут играть сами</div>
-</div></div>
+<div class="startov" id="startov"><button class="startbtn" id="snd" type="button">🔊 Включить звук</button></div>
 <audio id="au" preload="auto"></audio>
 <script>
 __ROLL_JS__
@@ -831,12 +824,14 @@ const sfx = {
 };
 // Тишина в формате WAV (44 байта данных): нужна, чтобы «разбудить» <audio> внутри нажатия — иначе Safari/планшеты потом не дают играть сами.
 const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=';
-function showSndBtn(text){ startov.hidden = false; startov.style.opacity = 1; snd.textContent = text || '🔊 Включить звук и начать'; }
+function showSndBtn(text){ startov.classList.add('show'); snd.textContent = text || '🔊 Включить звук'; }
+// Кнопку показываем, только если звук так и не включился сам (гостевой экран включает его автоматически).
+setTimeout(() => { if (!unlocked) showSndBtn(); }, 2500);
 async function enableSound(){
   if (unlocked) return;
   try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); await AC.resume(); } catch (e) {}
   try { const keep = au.src; au.muted = true; au.src = SILENT; await au.play(); au.pause(); au.muted = false; au.removeAttribute('src'); au.load(); if (keep && keep !== location.href) au.src = keep; } catch (e) { try { au.muted = false; } catch (e2) {} }
-  unlocked = true; startov.style.opacity = 0; setTimeout(() => { if (unlocked) startov.hidden = true; }, 520);
+  unlocked = true; startov.classList.remove('show');
   sfx.ok();                                   // короткий сигнал: слышно — значит звук включён
   if (S) playFrom(S, true);
 }
@@ -852,7 +847,7 @@ function playFrom(s, force){
   if (!a || !a.kind) { try { au.pause(); } catch (e) {} return; }
   const f = a.kind === 'q' ? cu.qfile : cu.afile; if (!f) return;
   au.src = BASE + 'audio/' + f; au.currentTime = 0;
-  au.play().catch(e => { if (e && e.name === 'NotAllowedError') { unlocked = false; showSndBtn('🔊 Нажмите, чтобы включить звук'); } });
+  au.play().catch(e => { if (e && e.name === 'NotAllowedError') { unlocked = false; showSndBtn('🔊 Включить звук'); } });
 }
 
 /* ---------- Отрисовка ---------- */
