@@ -29,7 +29,8 @@ h1{font-size:52px;margin:0 0 42px}.section{margin:42px 0}.title{font-size:22px;f
 .launch{margin-top:26px}.launch button{width:100%;padding:22px;border:2px solid #2bf08a;border-radius:17px;background:#07170f;color:#2bf08a;font:900 19px Arial,sans-serif;cursor:pointer}.launch button.done{background:#2bf08a;color:#02140a}.launch button:disabled{opacity:.6}.launchhint{margin-top:10px;text-align:center;font-size:13px;color:#82968c}.launchhint.warn{color:#e8b24a}
 .qrbox{margin-top:24px;padding:22px;border:1px solid #20543a;border-radius:17px;background:#07170f;display:flex;align-items:center;gap:22px}
 .qrbox img{width:150px;height:150px;background:#fff;padding:8px;border-radius:12px}.qrtitle{font-size:19px;font-weight:900}.qrhint{font-size:13px;color:#82968c;margin-top:7px;line-height:1.4}
-.toplinks{display:flex;gap:22px;align-items:center}.qrlink{color:#9db0a5;font-size:15px;font-weight:700;text-decoration:underline;text-underline-offset:4px;white-space:nowrap}.qrlink:hover{color:#fff}
+.toplinks{display:flex;gap:22px;align-items:center}.splashcard{font:inherit;color:inherit;cursor:pointer;font-size:inherit;border:1px solid #51404d}.splashcard.done{border-color:#2bf08a;box-shadow:0 0 25px rgba(43,240,138,.18)}.splashhint{align-self:center;color:#82968c;font-size:14px;line-height:1.4;grid-column:span 2}.splashhint.warn{color:#e8b24a}
+.qrlink{color:#9db0a5;font-size:15px;font-weight:700;text-decoration:underline;text-underline-offset:4px;white-space:nowrap}.qrlink:hover{color:#fff}
 .qrov{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,6,5,.8);backdrop-filter:blur(6px)}.qrov.on{display:flex}
 .qrmodal{width:min(360px,100%);text-align:center;padding:24px;border:1px solid #20543a;border-radius:20px;background:#07170f}.qrmodal img{display:block;width:240px;max-width:100%;height:auto;margin:16px auto;background:#fff;padding:10px;border-radius:14px}
 .qrmodal button{margin-top:18px;width:100%;padding:13px;border:1px solid #3c4b43;border-radius:12px;background:none;color:#fff;font:700 16px Arial,sans-serif;cursor:pointer}
@@ -47,6 +48,7 @@ HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 <div class="section"><div class="title f">ЖЕНСКОЕ</div><div class="grid">
 <a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><a class="card f" href="/contest/kolcebros">КОЛЬЦЕБРОС</a><a class="card f" href="/contest/diktant">ДИКТАНТ</a>
 </div></div>
+<div class="section"><div class="title mix">ГОСТЕВОЙ ЭКРАН</div><div class="grid"><button type="button" class="card mix splashcard" id="splashBtn">Вывести заставку на гостевой экран</button><div class="splashhint" id="splashHint"></div></div></div>
 <div class="section"><div class="title mix">МУЖЧИНА VS ЖЕНЩИНА</div><div class="grid"><a class="card mix" href="/contest/final">ФИНАЛ</a></div></div>
 </div>
 <div class="qrov" id="qrOv"><div class="qrmodal"><div class="qrtitle">QR ДЛЯ ВЕДУЩЕГО</div><img src="{{qr}}" alt="QR для ведущего"><div class="qrhint">Отсканируйте телефоном, чтобы открыть эту страницу с конкурсами</div><button type="button" id="qrClose">Закрыть</button></div></div>
@@ -55,6 +57,12 @@ document.getElementById('qrOpen').addEventListener('click',function(e){e.prevent
 document.getElementById('qrClose').addEventListener('click',function(){s(false)});
 o.addEventListener('click',function(e){if(e.target===o)s(false)});
 addEventListener('keydown',function(e){if(e.key==='Escape')s(false)});})();</script>
+<script>(function(){var b=document.getElementById('splashBtn'),h=document.getElementById('splashHint');
+function paint(a){var on=!a.key;b.classList.toggle('done',on&&a.screen_online);b.textContent=on&&a.screen_online?'✓ Заставка на гостевом экране':'Вывести заставку на гостевой экран';
+ h.textContent=a.screen_online?(on?'':'Сейчас на гостевом экране идёт конкурс.'):'Гостевой экран не открыт. Откройте его по ссылке «Гостевой экран» вверху.';h.className='splashhint'+(a.screen_online?'':' warn')}
+function load(){fetch('/api/active',{cache:'no-store'}).then(function(r){return r.json()}).then(paint).catch(function(){})}
+b.addEventListener('click',function(){b.disabled=true;fetch('/api/launch/splash',{method:'POST'}).then(function(){b.disabled=false;load()}).catch(function(){b.disabled=false})});
+load();setInterval(load,3000)})();</script>
 </body></html>"""
 
 MENU="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{{name}}</title><style>{{css}}</style></head><body><div class="wrap"><div class="menu">
@@ -82,9 +90,9 @@ iframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#040b08
 .start{position:fixed;inset:0;z-index:5;display:grid;place-items:center;background:rgba(3,6,5,.96)}
 .start button{border:0;border-radius:999px;padding:.7em 1.6em;font:800 min(3vw,38px) Arial,sans-serif;background:linear-gradient(100deg,#2bf08a,#ff4fa3);color:#10120f;cursor:pointer}
 .start p{color:#81958b;max-width:32em;margin:18px auto 0;text-align:center;line-height:1.45}.start p.w{color:#e8b24a}</style></head><body>
-<div class="wait" id="wait"><div><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="sl">/</span> <span class="f">ЖЕНСКОЕ</span></div><div class="sub">Ожидаем следующий конкурс…</div></div></div>
+<div class="wait" id="wait"><div><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="sl">/</span> <span class="f">ЖЕНСКОЕ</span></div></div></div>
 <iframe id="fr" title="Гостевой экран" allow="autoplay; microphone; fullscreen" hidden></iframe>
-<div class="start" id="start"><div style="text-align:center"><button id="go" type="button">Включить гостевой экран</button><p id="hint">Нажмите один раз: браузер спросит доступ к микрофону и звуку для всех конкурсов сразу, больше во время игры он спрашивать не будет. Дальше экран сам переключается, когда ведущий нажимает «Запустить на гостевом экране».</p></div></div>
+<div class="start" id="start"><div style="text-align:center"><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="sl">/</span> <span class="f">ЖЕНСКОЕ</span></div><div style="margin-top:6vh"><button id="go" type="button">Включить</button></div><p id="hint" hidden></p></div></div>
 <script>
 (function(){var fr=document.getElementById('fr'),wait=document.getElementById('wait'),cur='',AC=null;
 function unlock(){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();AC.resume();var b=AC.createBuffer(1,1,22050),s=AC.createBufferSource();s.buffer=b;s.connect(AC.destination);s.start(0)}catch(e){}}
@@ -104,9 +112,9 @@ document.getElementById('go').addEventListener('click',async function(){
  var btn=this;btn.disabled=true;unlock();wake();
  try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()}catch(e){}
  var ok=await mic();
- if(!ok){var h=document.getElementById('hint');h.className='w';h.textContent='Доступ к микрофону не получен. Конкурсы «Voice meter» и «Точно в ноту» без него не заработают: разрешите микрофон в настройках сайта (значок замка в адресной строке) и обновите страницу. Остальные конкурсы можно запускать.';btn.disabled=false;btn.textContent='Продолжить без микрофона';failed=true;return}
+ if(!ok){var h=document.getElementById('hint');h.hidden=false;h.className='w';h.textContent='Доступ к микрофону не получен. Конкурсы «Voice meter» и «Точно в ноту» без него не заработают: разрешите микрофон в настройках сайта (значок замка в адресной строке) и обновите страницу. Остальные конкурсы можно запускать.';btn.disabled=false;btn.textContent='Продолжить без микрофона';failed=true;return}
  go()});
-try{if(localStorage.getItem('gs_started')){document.getElementById('hint').textContent='Страница обновилась. Нажмите один раз, чтобы снова включить звук: браузер разрешает звук только после нажатия. Если доступ к микрофону уже выдан, он не спросит.';document.getElementById('go').textContent='Продолжить'}}catch(e){}
+try{if(localStorage.getItem('gs_started')){document.getElementById('go').textContent='Продолжить'}}catch(e){}
 var failed=false;function go(){try{localStorage.setItem('gs_started','1')}catch(e){}document.getElementById('start').style.display='none';unlock();poll();setInterval(poll,1000)}
 })();
 </script></body></html>"""
@@ -130,7 +138,7 @@ def api_active():
 @app.post("/api/launch/<key>")
 def api_launch(key):
     from flask import jsonify
-    ok = active.launch(key)
+    ok = active.clear() if key == "splash" else active.launch(key)
     return jsonify(ok=ok), (200 if ok else 404)
 
 @app.get("/screen")

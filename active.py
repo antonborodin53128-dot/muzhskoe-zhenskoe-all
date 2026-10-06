@@ -23,6 +23,13 @@ def launch(key):
     return True
 
 
+def clear():
+    """Показать заставку между конкурсами."""
+    if _state["key"] is not None:
+        _state["key"] = None; _state["n"] += 1
+    return True
+
+
 def heartbeat():
     _state["seen"] = time.time()
 
