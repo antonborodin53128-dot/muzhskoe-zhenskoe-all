@@ -48,7 +48,6 @@ HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 <div class="section"><div class="title f">ЖЕНСКОЕ</div><div class="grid">
 <a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><a class="card f" href="/contest/kolcebros">КОЛЬЦЕБРОС</a><a class="card f" href="/contest/diktant">ДИКТАНТ</a>
 </div></div>
-</div>
 <div class="section"><div class="title mix">МУЖЧИНА VS ЖЕНЩИНА</div><div class="grid"><a class="card mix" href="/contest/final">ФИНАЛ</a></div></div>
 </div>
 <div class="qrov" id="qrOv"><div class="qrmodal"><div class="qrtitle">QR ДЛЯ ВЕДУЩЕГО</div><img src="{{qr}}" alt="QR для ведущего"><div class="qrhint">Отсканируйте телефоном, чтобы открыть эту страницу с конкурсами</div><button type="button" id="qrClose">Закрыть</button></div></div>
