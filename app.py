@@ -9,6 +9,7 @@ from kolcebros_app import app as kolcebros_app
 from dictation_app import app as dictation_app
 from final_app import app as final_app
 import io, base64
+import active
 import qrcode
 
 
@@ -25,9 +26,10 @@ h1{font-size:52px;margin:0 0 42px}.section{margin:42px 0}.title{font-size:22px;f
 .menu{max-width:760px;margin:70px auto}.back{color:#8ca096;text-decoration:none;font-weight:900}.contest{font-size:58px;margin:35px 0 10px}.hint{color:#81958b;margin-bottom:35px}
 .menuGrid{display:grid;gap:14px}.action{display:flex;align-items:center;justify-content:space-between;padding:23px 25px;border-radius:17px;border:1px solid #20543a;background:#07170f;color:#fff;text-decoration:none;font-size:21px;font-weight:900}
 .action:hover{border-color:#20ee78}.action span{color:#20ee78}.action.setup{background:#101713;border-color:#3c4b43}.small{font-size:13px;color:#82968c;margin-top:5px;font-weight:normal}
+.launch{margin-top:26px}.launch button{width:100%;padding:22px;border:2px solid #2bf08a;border-radius:17px;background:#07170f;color:#2bf08a;font:900 19px Arial,sans-serif;cursor:pointer}.launch button.done{background:#2bf08a;color:#02140a}.launch button:disabled{opacity:.6}.launchhint{margin-top:10px;text-align:center;font-size:13px;color:#82968c}.launchhint.warn{color:#e8b24a}
 .qrbox{margin-top:24px;padding:22px;border:1px solid #20543a;border-radius:17px;background:#07170f;display:flex;align-items:center;gap:22px}
 .qrbox img{width:150px;height:150px;background:#fff;padding:8px;border-radius:12px}.qrtitle{font-size:19px;font-weight:900}.qrhint{font-size:13px;color:#82968c;margin-top:7px;line-height:1.4}
-.qrlink{color:#9db0a5;font-size:15px;font-weight:700;text-decoration:underline;text-underline-offset:4px;white-space:nowrap}.qrlink:hover{color:#fff}
+.toplinks{display:flex;gap:22px;align-items:center}.qrlink{color:#9db0a5;font-size:15px;font-weight:700;text-decoration:underline;text-underline-offset:4px;white-space:nowrap}.qrlink:hover{color:#fff}
 .qrov{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,6,5,.8);backdrop-filter:blur(6px)}.qrov.on{display:flex}
 .qrmodal{width:min(360px,100%);text-align:center;padding:24px;border:1px solid #20543a;border-radius:20px;background:#07170f}.qrmodal img{display:block;width:240px;max-width:100%;height:auto;margin:16px auto;background:#fff;padding:10px;border-radius:14px}
 .qrmodal button{margin-top:18px;width:100%;padding:13px;border:1px solid #3c4b43;border-radius:12px;background:none;color:#fff;font:700 16px Arial,sans-serif;cursor:pointer}
@@ -37,7 +39,7 @@ h1{font-size:52px;margin:0 0 42px}.section{margin:42px 0}.title{font-size:22px;f
 """
 HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Мужское / Женское</title><style>{{css}}</style></head><body><div class="wrap">
 <div class="top"><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="slash">/</span> <span class="fword">ЖЕНСКОЕ</span></div>
-<a class="qrlink" id="qrOpen" href="#" role="button">QR для ведущего</a></div>
+<div class="toplinks"><a class="qrlink" href="/screen" target="_blank" rel="noopener">Гостевой экран</a><a class="qrlink" id="qrOpen" href="#" role="button">QR для ведущего</a></div></div>
 <h1>КОНКУРСЫ</h1>
 <div class="section"><div class="title">МУЖСКОЕ</div><div class="grid">
 <a class="card" href="/contest/voice">VOICE METER</a><a class="card" href="/contest/balls">ШАРИКИ</a><a class="card" href="/contest/hamster">ХОМЯК</a>
@@ -60,7 +62,54 @@ MENU="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 {% for a in actions %}<a class="action {{a.get('class','')}}" href="{{a.url}}" {% if a.get('new') %}target="_blank"{% endif %}><div>{{a.title}}{% if a.get('desc') %}<div class="small">{{a.desc}}</div>{% endif %}</div><span>→</span></a>{% endfor %}
 </div>
 <div class="qrbox"><img src="{{qr}}" alt="QR для ведущего"><div><div class="qrtitle">QR ДЛЯ ВЕДУЩЕГО</div><div class="qrhint">Отсканируйте телефоном, чтобы открыть страницу управления конкурсом.</div></div></div>
-</div></div></body></html>"""
+</div>
+<div class="launch" id="launch" data-key="{{key}}"><button type="button" id="launchBtn">Запустить на гостевом экране</button><div class="launchhint" id="launchHint"></div></div>
+</div><script>(function(){var box=document.getElementById('launch'),btn=document.getElementById('launchBtn'),hint=document.getElementById('launchHint'),key=box.dataset.key;
+function paint(a){var on=a.key===key;btn.classList.toggle('done',on);btn.textContent=on?'✓ Запущено на гостевом экране':'Запустить на гостевом экране';
+ hint.textContent=a.screen_online?(on?'Гостевой экран показывает этот конкурс.':'Гостевой экран подключён.'):'Гостевой экран не открыт. Откройте его на главной странице («Гостевой экран»).';
+ hint.className='launchhint'+(a.screen_online?'':' warn')}
+function load(){fetch('/api/active',{cache:'no-store'}).then(function(r){return r.json()}).then(paint).catch(function(){})}
+btn.addEventListener('click',function(){btn.disabled=true;fetch('/api/launch/'+key,{method:'POST'}).then(function(){btn.disabled=false;load()}).catch(function(){btn.disabled=false})});
+load();setInterval(load,3000)})();</script></body></html>"""
+
+
+SCREEN_SHELL = r"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Гостевой экран</title>
+<style>*{box-sizing:border-box}html,body{margin:0;height:100%;background:#040b08;color:#f5f6f2;font-family:Arial,sans-serif;overflow:hidden}
+iframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#040b08}
+.wait{position:fixed;inset:0;display:grid;place-items:center;text-align:center;background:radial-gradient(circle at 20% 40%,#082519 0,#040b08 45%,#030505 80%)}
+.logo{font-size:min(7vw,90px);font-weight:900}.m{border:.06em solid #20ee78;padding:.12em .3em}.sl{color:#20ee78}.f{color:#ff4fa3}
+.sub{margin-top:3vh;color:#81958b;font-size:min(2.4vw,30px)}
+.start{position:fixed;inset:0;z-index:5;display:grid;place-items:center;background:rgba(3,6,5,.96)}
+.start button{border:0;border-radius:999px;padding:.7em 1.6em;font:800 min(3vw,38px) Arial,sans-serif;background:linear-gradient(100deg,#2bf08a,#ff4fa3);color:#10120f;cursor:pointer}
+.start p{color:#81958b;max-width:32em;margin:18px auto 0;text-align:center;line-height:1.45}.start p.w{color:#e8b24a}</style></head><body>
+<div class="wait" id="wait"><div><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="sl">/</span> <span class="f">ЖЕНСКОЕ</span></div><div class="sub">Ожидаем следующий конкурс…</div></div></div>
+<iframe id="fr" title="Гостевой экран" allow="autoplay; microphone; fullscreen" hidden></iframe>
+<div class="start" id="start"><div style="text-align:center"><button id="go" type="button">Включить гостевой экран</button><p id="hint">Нажмите один раз: браузер спросит доступ к микрофону и звуку для всех конкурсов сразу, больше во время игры он спрашивать не будет. Дальше экран сам переключается, когда ведущий нажимает «Запустить на гостевом экране».</p></div></div>
+<script>
+(function(){var fr=document.getElementById('fr'),wait=document.getElementById('wait'),cur='',AC=null;
+function unlock(){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();AC.resume();var b=AC.createBuffer(1,1,22050),s=AC.createBufferSource();s.buffer=b;s.connect(AC.destination);s.start(0)}catch(e){}}
+function poke(){try{var d=fr.contentDocument;if(!d)return;
+ ['soundBtn','snd'].forEach(function(id){var b=d.getElementById(id);if(b&&b.offsetParent!==null)b.click()});
+ d.dispatchEvent(new Event('pointerdown'))}catch(e){}}
+fr.addEventListener('load',function(){poke();setTimeout(poke,700);setTimeout(poke,2000)});
+setInterval(function(){if(!fr.hidden)poke()},4000);
+function apply(a){var k=a.key||'';if(k===cur)return;cur=k;
+ if(!k){fr.hidden=true;fr.removeAttribute('src');wait.style.display='grid';return}
+ wait.style.display='none';fr.hidden=false;fr.src=a.url}
+function poll(){fetch('/api/active?hb=1',{cache:'no-store'}).then(function(r){return r.json()}).then(apply).catch(function(){})}
+async function mic(){try{var s=await navigator.mediaDevices.getUserMedia({audio:true});s.getTracks().forEach(function(t){t.stop()});return true}catch(e){return false}}
+async function wake(){try{if(navigator.wakeLock){var l=await navigator.wakeLock.request('screen');document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')navigator.wakeLock.request('screen').catch(function(){})})}}catch(e){}}
+document.getElementById('go').addEventListener('click',async function(){
+ if(failed){go();return}
+ var btn=this;btn.disabled=true;unlock();wake();
+ try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()}catch(e){}
+ var ok=await mic();
+ if(!ok){var h=document.getElementById('hint');h.className='w';h.textContent='Доступ к микрофону не получен. Конкурсы «Voice meter» и «Точно в ноту» без него не заработают: разрешите микрофон в настройках сайта (значок замка в адресной строке) и обновите страницу. Остальные конкурсы можно запускать.';btn.disabled=false;btn.textContent='Продолжить без микрофона';failed=true;return}
+ go()});
+try{if(localStorage.getItem('gs_started')){document.getElementById('hint').textContent='Страница обновилась. Нажмите один раз, чтобы снова включить звук: браузер разрешает звук только после нажатия. Если доступ к микрофону уже выдан, он не спросит.';document.getElementById('go').textContent='Продолжить'}}catch(e){}
+var failed=false;function go(){try{localStorage.setItem('gs_started','1')}catch(e){}document.getElementById('start').style.display='none';unlock();poll();setInterval(poll,1000)}
+})();
+</script></body></html>"""
 
 
 def qr_data(url):
@@ -72,26 +121,42 @@ def qr_data(url):
 def absolute(path):
     return request.url_root.rstrip("/") + path
 
+@app.get("/api/active")
+def api_active():
+    from flask import jsonify
+    if request.args.get("hb"): active.heartbeat()
+    r = jsonify(active.get_active()); r.headers["Cache-Control"] = "no-store"; return r
+
+@app.post("/api/launch/<key>")
+def api_launch(key):
+    from flask import jsonify
+    ok = active.launch(key)
+    return jsonify(ok=ok), (200 if ok else 404)
+
+@app.get("/screen")
+def unified_screen():
+    r = app.make_response(SCREEN_SHELL); r.headers["Cache-Control"] = "no-store"; return r
+
 @app.get("/")
 def home(): return render_template_string(HOME,css=CSS,qr=qr_data(absolute("/")))
 
 @app.get("/contest/balls")
 def balls_menu():
-    return render_template_string(MENU,css=CSS,name="ШАРИКИ",qr=qr_data(absolute("/men/balls/")),actions=[
+    return render_template_string(MENU,key=request.path.split('/')[2],css=CSS,name="ШАРИКИ",qr=qr_data(absolute("/men/balls/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/men/balls/","desc":"Управление участниками, таймером и результатами"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/men/balls/screen","desc":"Экран для проектора","new":True},
     ])
 
 @app.get("/contest/hamster")
 def hamster_menu():
-    return render_template_string(MENU,css=CSS,name="ХОМЯК",qr=qr_data(absolute("/men/hamster/")),actions=[
+    return render_template_string(MENU,key=request.path.split('/')[2],css=CSS,name="ХОМЯК",qr=qr_data(absolute("/men/hamster/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/men/hamster/","desc":"Управление конкурсом"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/men/hamster/screen","desc":"Игровой экран для участника / проектора","new":True},
     ])
 
 @app.get("/contest/voice")
 def voice_menu():
-    return render_template_string(MENU,css=CSS,name="VOICE METER",qr=qr_data(absolute("/men/voice/")),actions=[
+    return render_template_string(MENU,key=request.path.split('/')[2],css=CSS,name="VOICE METER",qr=qr_data(absolute("/men/voice/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/men/voice/","desc":"Управление участниками, таймером и результатами"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/men/voice/screen","desc":"Экран для проектора со шкалой громкости. Слушает микрофон","new":True},
         {"title":"SETUP","url":"/men/voice/setup","desc":"Выбор аудиовхода и чувствительности. Открывать на компьютере с микрофоном","class":"setup","new":True},
@@ -99,7 +164,7 @@ def voice_menu():
 
 @app.get("/contest/note")
 def note_menu():
-    return render_template_string(MENU,css=CSS,name="ТОЧНО В НОТУ",qr=qr_data(absolute("/women/note/")),actions=[
+    return render_template_string(MENU,key=request.path.split('/')[2],css=CSS,name="ТОЧНО В НОТУ",qr=qr_data(absolute("/women/note/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/women/note/","desc":"Управление участницами, таймером и результатами"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/women/note/screen","desc":"Экран для проектора с барьерами. Слушает микрофон","new":True},
         {"title":"SETUP","url":"/women/note/setup","desc":"Выбор аудиовхода, тюнер и проверка попадания. Открывать на компьютере с микрофоном","class":"setup","new":True},
@@ -107,14 +172,14 @@ def note_menu():
 
 @app.get("/contest/kolcebros")
 def kolcebros_menu():
-    return render_template_string(MENU,css=CSS,name="КОЛЬЦЕБРОС",qr=qr_data(absolute("/women/kolcebros/")),actions=[
+    return render_template_string(MENU,key=request.path.split('/')[2],css=CSS,name="КОЛЬЦЕБРОС",qr=qr_data(absolute("/women/kolcebros/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/women/kolcebros/","desc":"Управление участниками и баллами"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/women/kolcebros/screen","desc":"Экран для проектора с результатами","new":True},
     ])
 
 @app.get("/contest/diktant")
 def diktant_menu():
-    return render_template_string(MENU,css=CSS,name="ДИКТАНТ",qr=qr_data(absolute("/women/diktant/")),actions=[
+    return render_template_string(MENU,key=request.path.split('/')[2],css=CSS,name="ДИКТАНТ",qr=qr_data(absolute("/women/diktant/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/women/diktant/","desc":"Выбор набора слов, запуск на экран, кнопка «Озвучить слово»"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/women/diktant/screen","desc":"Экран с клавиатурой и колонками для проектора","new":True},
         {"title":"ПРОВЕРКА ОЗВУЧКИ","url":"/women/diktant/audio-check","desc":"Прослушать все 20 слов перед конкурсом","class":"setup","new":True},
@@ -122,7 +187,7 @@ def diktant_menu():
 
 @app.get("/contest/final")
 def final_menu():
-    return render_template_string(MENU,css=CSS,name="ФИНАЛ",qr=qr_data(absolute("/mix/final/")),actions=[
+    return render_template_string(MENU,key=request.path.split('/')[2],css=CSS,name="ФИНАЛ",qr=qr_data(absolute("/mix/final/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/mix/final/","desc":"Категории, выбор Man/Woman, Правильно/Ошибка, ответ и 21 очко"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/mix/final/screen","desc":"Экран для проектора: 5 категорий, вопросы, музыка, счёт","new":True},
     ])
