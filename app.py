@@ -183,7 +183,7 @@ def voice_menu():
     return render_template_string(MENU,key=request.path.split('/')[2],css=CSS,name="VOICE METER",qr=qr_data(absolute("/men/voice/")),actions=[
         {"title":"ВЕДУЩИЙ","url":"/men/voice/","desc":"Управление участниками, таймером и результатами"},
         {"title":"ГОСТЕВОЙ ЭКРАН","url":"/men/voice/screen","desc":"Экран для проектора со шкалой громкости. Слушает микрофон","new":True},
-        {"title":"SETUP","url":"/men/voice/setup","desc":"Выбор аудиовхода и чувствительности. Открывать на компьютере с микрофоном","class":"setup","new":True},
+        {"title":"SETUP","url":"/men/voice/setup","desc":"Выбор аудиовхода и усиления микрофона. Открывать на компьютере с микрофоном","class":"setup","new":True},
     ])
 
 @app.get("/contest/note")

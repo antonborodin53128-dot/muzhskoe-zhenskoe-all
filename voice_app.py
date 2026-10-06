@@ -5,7 +5,7 @@
 
   /         — пульт ведущего (телефон)
   /screen   — экран для гостей (проектор), он же снимает звук с микрофона
-  /setup    — выбор аудиовхода и чувствительности (открывать на компьютере с микрофоном)
+  /setup    — выбор аудиовхода и усиления микрофона 0…+50 dB (открывать на компьютере с микрофоном)
 
 Микрофон слушает браузер экрана для гостей и присылает уровень на сервер через
 Socket.IO. Сервер сам считает раунды и максимум, поэтому пульт и экраны всегда
@@ -547,19 +547,27 @@ function ranking(s){ return s.participants.map((p, i) => ({...p, i})).filter(p =
 # ======================================================================
 AUDIO_JS = r"""
 const VM_KEY = 'vm.settings.v1';
-const VM_DEFAULT = {deviceId: '', label: '', trim: 0, agc: false, ns: false, ec: false};
-function vmLoad(){ try { return {...VM_DEFAULT, ...JSON.parse(localStorage.getItem(VM_KEY) || '{}')}; } catch (e) { return {...VM_DEFAULT}; } }
+const GAIN_MAX = 50;   // усиление микрофона: 0…+50 dB
+const VM_DEFAULT = {deviceId: '', label: '', gain: 0, agc: false, ns: false, ec: false};
+const clampGain = v => Math.max(0, Math.min(GAIN_MAX, Math.round(+v || 0)));
+function vmLoad(){
+  try {
+    const raw = JSON.parse(localStorage.getItem(VM_KEY) || '{}');
+    if (raw.gain == null && raw.trim != null) raw.gain = raw.trim;    // старая «чувствительность»: плюс переходит в усиление, минус обнуляется
+    const s = {...VM_DEFAULT, ...raw}; delete s.trim; s.gain = clampGain(s.gain); return s;
+  } catch (e) { return {...VM_DEFAULT}; }
+}
 function vmSave(patch){ const s = {...vmLoad(), ...patch}; try { localStorage.setItem(VM_KEY, JSON.stringify(s)); } catch (e) {} return s; }
 /* Шкала 0–100 dB условная: от «почти тишина» (-75 dBFS) до «в потолок» (-5 dBFS).
-   Чувствительность (trim) сдвигает всю шкалу вверх или вниз. */
+   Усиление микрофона (gain, 0…+50 dB) поднимает сигнал ещё до измерения, поэтому шкала считается уже по усиленному звуку. */
 const DB_LO = -75, DB_HI = -5;
-function toLevel(dbfs, trim){ return Math.max(0, Math.min(100, (dbfs - DB_LO + trim) / (DB_HI - DB_LO) * 100)); }
+function toLevel(dbfs){ return Math.max(0, Math.min(100, (dbfs - DB_LO) / (DB_HI - DB_LO) * 100)); }
 
 const Mic = (() => {
   const TICK = 25, WIN = 8;          // замер каждые 25 мс, усреднение по 8 замерам = 200 мс
-  let ctx = null, stream = null, an = null, buf = null, timer = null, tickWorker = null, retry = null, gen = 0, wanted = false, hist = [], cfg = vmLoad();
+  let ctx = null, stream = null, an = null, gainNode = null, started = '', buf = null, timer = null, tickWorker = null, retry = null, gen = 0, wanted = false, hist = [], cfg = vmLoad();
   const api = {running: false, error: '', note: '', label: '', deviceId: '', settings: null, sampleRate: 0,
-               level: 0, dbfs: -120, suspended: false, onLevel: null, onState: null};
+               level: 0, dbfs: -120, gain: 0, suspended: false, onLevel: null, onState: null};
   const fire = () => { api.suspended = !!ctx && ctx.state !== 'running'; api.onState && api.onState(api); };
 
   function explain(e){
@@ -590,7 +598,7 @@ const Mic = (() => {
     stopTimer();
     if (stream) { stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); stream = null; }
     if (ctx) { ctx.onstatechange = null; ctx.close().catch(() => {}); ctx = null; }
-    an = null; hist = []; api.running = false; api.level = 0; api.dbfs = -120; api.sampleRate = 0;
+    an = null; gainNode = null; hist = []; api.running = false; api.level = 0; api.dbfs = -120; api.sampleRate = 0;
   }
   async function getStream(c){
     const audio = {echoCancellation: c.ec, noiseSuppression: c.ns, autoGainControl: c.agc};
@@ -618,6 +626,14 @@ const Mic = (() => {
     clearTimeout(retry);
     retry = setTimeout(() => { if (wanted && my === gen) api.start(); }, 3000);
   }
+  // Что требует переоткрытия микрофона. Усиление к этому не относится: оно меняется на лету.
+  const signature = c => [c.deviceId, c.label, c.agc, c.ns, c.ec].join('|');
+  function applyGain(now){
+    api.gain = cfg.gain;
+    if (!gainNode || !ctx) return;
+    const v = Math.pow(10, cfg.gain / 20);
+    if (now) gainNode.gain.value = v; else gainNode.gain.setTargetAtTime(v, ctx.currentTime, .02);
+  }
   function measure(){
     if (!an) return;
     an.getFloatTimeDomainData(buf);
@@ -628,13 +644,13 @@ const Mic = (() => {
     // а громкий крик держится дольше и проходит почти без потерь.
     let m = 0; for (const x of hist) m += x; m /= WIN;
     api.dbfs = m > 1e-12 ? 10 * Math.log10(m) : -120;
-    api.level = toLevel(api.dbfs, cfg.trim);
+    api.level = toLevel(api.dbfs);
     api.onLevel && api.onLevel(api.level, api.dbfs);
   }
 
   api.start = async () => {
     const my = ++gen; wanted = true; clearTimeout(retry);
-    cfg = vmLoad(); api.note = ''; api.error = '';
+    cfg = vmLoad(); api.gain = cfg.gain; api.note = ''; api.error = '';
     teardown();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       api.error = 'Браузер не даёт доступ к микрофону. Нужен HTTPS или адрес localhost.'; fire(); return false;
@@ -651,7 +667,10 @@ const Mic = (() => {
     api.sampleRate = ctx.sampleRate; ctx.onstatechange = fire;
     try { await ctx.resume(); } catch (e) {}
     an = ctx.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0;
-    ctx.createMediaStreamSource(s).connect(an);
+    // Настоящий предусилитель: сигнал усиливается до измерения (0…+50 dB)
+    gainNode = ctx.createGain(); applyGain(true);
+    ctx.createMediaStreamSource(s).connect(gainNode); gainNode.connect(an);
+    started = signature(cfg);
     buf = new Float32Array(an.fftSize); hist = [];
     startTimer();     // таймер, а не кадры: замер не зависит от того, видна ли вкладка
     api.running = true; fire(); return true;
@@ -661,8 +680,9 @@ const Mic = (() => {
     if (ctx && ctx.state !== 'running') { try { await ctx.resume(); } catch (e) {} }
     fire(); return !!ctx && ctx.state === 'running';
   };
-  api.reload = () => { cfg = vmLoad(); };
-  api.setTrim = v => { cfg.trim = v; };
+  // true — изменилось то, что требует переоткрыть микрофон (вход, AGC и т.п.); усиление применяется сразу
+  api.reload = () => { cfg = vmLoad(); applyGain(); return signature(cfg) !== started; };
+  api.setGain = v => { cfg.gain = clampGain(v); applyGain(); };
   return api;
 })();
 """
@@ -1196,7 +1216,7 @@ function updateChip(){
   let cls = '', txt;
   if (Mic.error) { cls = 'bad'; txt = Mic.error; }
   else if (Mic.running && Mic.suspended) { cls = 'bad'; txt = 'Микрофон: ' + (Mic.label || 'вход по умолчанию') + ' · браузер приостановил звук, щёлкните по экрану'; }
-  else if (Mic.running) { cls = 'ok'; txt = 'Микрофон: ' + (Mic.label || 'вход по умолчанию') + (Mic.note ? ' · ' + Mic.note : ''); }
+  else if (Mic.running) { cls = 'ok'; txt = 'Микрофон: ' + (Mic.label || 'вход по умолчанию') + (Mic.gain ? ' · усиление +' + Mic.gain + ' dB' : '') + (Mic.note ? ' · ' + Mic.note : ''); }
   else txt = 'Микрофон: подключаю…';
   c.className = 'micchip ' + cls; t.textContent = txt;
 }
@@ -1206,7 +1226,7 @@ Mic.onState = () => {
   else if (wasRunning && socket.connected) socket.emit('mic_release');
   wasRunning = Mic.running;
 };
-addEventListener('storage', e => { if (e.key === VM_KEY && micEnabled) { Mic.reload(); Mic.start(); } });   // сменили вход в Setup — подхватываем сразу
+addEventListener('storage', e => { if (e.key === VM_KEY && micEnabled && (Mic.reload() || !Mic.running)) Mic.start(); });   // сменили вход в Setup — подхватываем сразу; усиление применяется на лету
 if (micEnabled) Mic.start(); else updateChip();
 
 /* ---------- Звуки: синтез в браузере, файлы не нужны ---------- */
@@ -1398,7 +1418,7 @@ requestAnimationFrame(frame);
 </script></body></html>"""
 
 # ======================================================================
-# Setup: выбор аудиовхода и чувствительности
+# Setup: выбор аудиовхода и усиления
 # ======================================================================
 SETUP_HTML = r"""<!doctype html>
 <html lang="ru" data-theme="men" data-base="{{ base }}">
@@ -1484,11 +1504,11 @@ input[type=range]{width:100%;margin:12px 0 4px;accent-color:var(--signal)}
       <button class="btn quiet" id="resetPk">Сбросить пик</button>
       <button class="btn primary" id="calib">Автонастройка</button>
     </div>
-    <div class="msg" id="calMsg">Автонастройка: нажмите кнопку и 5 секунд кричите в микрофон так, как будут кричать участники. Чувствительность подберётся сама, чтобы самый громкий крик был около 92.</div>
+    <div class="msg" id="calMsg">Автонастройка: нажмите кнопку и 5 секунд кричите в микрофон так, как будут кричать участники. Усиление подберётся само, чтобы самый громкий крик был около 92.</div>
     <div class="slider">
-      <div class="top2"><span>Чувствительность</span><span id="trimVal">0 dB</span></div>
-      <input type="range" id="trim" min="-30" max="30" step="1" value="0" aria-label="Чувствительность">
-      <p class="note">Обычная речь должна показывать около 50–60, громкий крик 85–95. Шкала не доходит до верха — добавьте, упирается в 100 — убавьте.</p>
+      <div class="top2"><span>Усиление микрофона</span><span id="gainVal">0 dB</span></div>
+      <input type="range" id="gain" min="0" max="50" step="1" value="0" aria-label="Усиление микрофона, от 0 до плюс 50 децибел">
+      <p class="note">От 0 до +50 dB. Обычная речь должна показывать около 50–60, громкий крик 85–95. Шкала не доходит до верха — добавьте усиление, упирается в 100 — убавьте. Чем больше усиление, тем сильнее слышны и фоновые шумы.</p>
     </div>
   </section>
 
@@ -1581,10 +1601,10 @@ addEventListener('pointerdown', () => { if (Mic.suspended) Mic.resume(); }, {pas
   $(k).onchange = async () => { cfg = vmSave({[k]: $(k).checked}); flashSaved(); await Mic.start(); };
 });
 
-function showTrim(v){ $('trimVal').textContent = (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v) + ' dB'; }
-$('trim').value = cfg.trim; showTrim(cfg.trim);
-$('trim').oninput = () => { const v = +$('trim').value; showTrim(v); Mic.setTrim(v); };
-$('trim').onchange = () => { cfg = vmSave({trim: +$('trim').value}); flashSaved(); };
+function showGain(v){ $('gainVal').textContent = (v > 0 ? '+' : '') + v + ' dB'; }
+$('gain').value = cfg.gain; showGain(cfg.gain);
+$('gain').oninput = () => { const v = clampGain($('gain').value); showGain(v); Mic.setGain(v); };    // слышно сразу, пока двигаете ползунок
+$('gain').onchange = () => { cfg = vmSave({gain: clampGain($('gain').value)}); flashSaved(); };
 $('resetPk').onclick = () => { pkDisp = lvDisp; pkAt = performance.now(); };
 
 $('calib').onclick = () => {
@@ -1596,10 +1616,13 @@ $('calib').onclick = () => {
     if (left > 0) { msg.textContent = `Кричите в микрофон! Осталось ${left} с`; left--; setTimeout(step, 1000); return; }
     calibrating = false; $('calib').disabled = false;
     if (calMax < -70) { msg.className = 'msg bad'; msg.textContent = 'Сигнала почти нет. Проверьте, что выбран нужный вход, и крикните громче.'; return; }
-    // trim подбираем так, чтобы самый громкий момент пришёлся на 92 из 100
-    const trim = Math.max(-30, Math.min(30, Math.round(.92 * (DB_HI - DB_LO) + DB_LO - calMax)));
-    $('trim').value = trim; showTrim(trim); Mic.setTrim(trim); cfg = vmSave({trim}); flashSaved();
-    msg.textContent = `Готово: чувствительность ${trim > 0 ? '+' : ''}${trim} dB. Проверьте ещё раз обычным криком, он должен доходить до 85–95.`;
+    // усиление подбираем так, чтобы самый громкий момент пришёлся на 92 из 100; calMax уже измерен с текущим усилением
+    const cur = clampGain($('gain').value);
+    const need = Math.round(.92 * (DB_HI - DB_LO) + DB_LO - (calMax - cur)), gain = clampGain(need);
+    $('gain').value = gain; showGain(gain); Mic.setGain(gain); cfg = vmSave({gain}); flashSaved();
+    if (need < 0) { msg.className = 'msg bad'; msg.textContent = 'Сигнал и так очень громкий: усиление оставлено 0 dB. Если шкала упирается в 100, уменьшите громкость микрофона в настройках звука системы.'; }
+    else if (need > GAIN_MAX) { msg.className = 'msg bad'; msg.textContent = `Даже +${GAIN_MAX} dB не хватает: самый громкий крик получится ниже 92. Поднимите громкость микрофона в настройках звука системы или поднесите его ближе.`; }
+    else msg.textContent = `Готово: усиление ${gain > 0 ? '+' : ''}${gain} dB. Проверьте ещё раз обычным криком, он должен доходить до 85–95.`;
     pkDisp = 0;
   };
   step();
