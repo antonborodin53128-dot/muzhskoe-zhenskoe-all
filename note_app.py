@@ -740,18 +740,18 @@ const NOTE_NAMES = ['Do','Do♯','Re','Re♯','Mi','Fa','Fa♯','Sol','Sol♯','
 /* Разбор по кадрам. Один объект на один микрофон. */
 function createVoicing(){
   const st = {floor: -70, hist: [], missed: 99, last: null, tmp: {}};
-  function process(buf, sr, gateOffset, calNoise){
+  function process(buf, sr, gateOffset, calNoise, gainDb){
     let sum = 0;
     for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
     const ms = sum / buf.length, dbfs = ms > 1e-12 ? 10 * Math.log10(ms) : -120;
     // плавающий шум: быстро опускается, медленно поднимается (длинная нота не поднимет его до уровня голоса)
     if (dbfs < st.floor) st.floor += .3 * (dbfs - st.floor); else st.floor += .002 * (dbfs - st.floor);
-    st.floor = Math.max(-90, Math.min(-35, st.floor));
+    st.floor = Math.max(-90, Math.min(-35 + (gainDb || 0), st.floor));
     const noise = Math.max(st.floor, calNoise == null ? -120 : calNoise);
     const gate = Math.max(ABS_GATE + (gateOffset || 0), noise + 8);
     const f = {dbfs, gate, voiced: false, held: false, hz: 0, clarity: 0, midi: 0, pc: 0, stable: false, floor: st.floor};
     let ok = false;
-    if (dbfs >= gate && dbfs < -2) {
+    if (dbfs >= gate && dbfs - (gainDb || 0) < -2) {      // верхний предел (стук, перегруз) считаем по звуку до усиления
       const r = yinDetect(buf, sr, st.tmp);
       f.hz = r.hz; f.clarity = r.clarity;
       ok = r.hz >= PITCH_FMIN && r.hz <= PITCH_FMAX && r.clarity >= 1 - PITCH_THR;
@@ -775,7 +775,8 @@ function createVoicing(){
     return f;
   }
   function reset(){ st.hist.length = 0; st.missed = 99; st.last = null; st.floor = -70; }
-  return {process, reset, get floor(){ return st.floor; }};
+  function shift(d){ st.floor = Math.max(-90, Math.min(0, st.floor + d)); }      // усиление изменилось: шум сдвигается вместе с ним
+  return {process, reset, shift, get floor(){ return st.floor; }};
 }
 if (typeof module !== 'undefined') module.exports = {yinDetect, createVoicing, hzToMidi, circ12, mod12, posOf, pdist, PITCH_THR};
 """
@@ -787,7 +788,7 @@ if (typeof module !== 'undefined') module.exports = {yinDetect, createVoicing, h
 # ======================================================================
 AUDIO_JS = r"""
 const NT_KEY = 'nt.settings.v1';
-const NT_DEFAULT = {deviceId: '', label: '', gate: 0, noise: null, agc: false, ns: false, ec: false};
+const NT_DEFAULT = {deviceId: '', label: '', gate: 0, gain: 0, agc: false, ns: false, ec: false};   // gain — усиление микрофона, dB (0…30)
 function ntLoad(){
   let s = {};
   try { s = JSON.parse(localStorage.getItem(NT_KEY) || '{}') || {}; } catch (e) {}
@@ -800,7 +801,7 @@ function ntSave(patch){ const s = {...ntLoad(), ...patch}; try { localStorage.se
 
 const Mic = (() => {
   const TICK = 25;                   // разбор звука каждые 25 мс
-  let ctx = null, stream = null, an = null, buf = null, timer = null, tickWorker = null, retry = null, gen = 0, wanted = false, cfg = ntLoad(), lastMeasure = 0;
+  let ctx = null, stream = null, an = null, gn = null, buf = null, timer = null, tickWorker = null, retry = null, gen = 0, wanted = false, cfg = ntLoad(), lastMeasure = 0;
   const voicing = createVoicing();
   const api = {running: false, error: '', note: '', label: '', deviceId: '', settings: null, sampleRate: 0,
                frame: null, suspended: false, onFrame: null, onState: null};
@@ -834,7 +835,7 @@ const Mic = (() => {
     stopTimer();
     if (stream) { stream.getTracks().forEach(t => { t.onended = null; t.stop(); }); stream = null; }
     if (ctx) { ctx.onstatechange = null; ctx.close().catch(() => {}); ctx = null; }
-    an = null; api.running = false; api.frame = null; api.sampleRate = 0; voicing.reset();
+    an = null; gn = null; api.running = false; api.frame = null; api.sampleRate = 0; voicing.reset();
   }
   async function getStream(c){
     const audio = {echoCancellation: c.ec, noiseSuppression: c.ns, autoGainControl: c.agc};
@@ -868,7 +869,7 @@ const Mic = (() => {
     if (t - lastMeasure < 15) return;           // отстающие тики не копим: лучше пропустить замер, чем отстать от голоса
     lastMeasure = t;
     an.getFloatTimeDomainData(buf);
-    const f = voicing.process(buf, ctx.sampleRate, cfg.gate, cfg.noise);
+    const f = voicing.process(buf, ctx.sampleRate, cfg.gate, null, cfg.gain || 0);
     api.frame = f;
     api.onFrame && api.onFrame(f);
   }
@@ -895,8 +896,10 @@ const Mic = (() => {
     const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 80; hp.Q.value = .7;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200; lp.Q.value = .7;
     an = ctx.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0;
-    ctx.createMediaStreamSource(s).connect(hp); hp.connect(lp); lp.connect(an);
-    buf = new Float32Array(an.fftSize); voicing.reset();
+    // Усиление микрофона (0…+30 dB): ставим первым, до фильтров, чтобы тихий голос дотянулся до порога «есть голос»
+    gn = ctx.createGain(); gn.gain.value = Math.pow(10, (cfg.gain || 0) / 20);
+    ctx.createMediaStreamSource(s).connect(gn); gn.connect(hp); hp.connect(lp); lp.connect(an);
+    buf = new Float32Array(an.fftSize); voicing.reset(); voicing.shift(cfg.gain || 0);
     startTimer();     // таймер, а не кадры: разбор не зависит от того, видна ли вкладка
     api.running = true; fire(); return true;
   };
@@ -907,7 +910,8 @@ const Mic = (() => {
   };
   api.reload = () => { cfg = ntLoad(); };
   api.setGate = v => { cfg.gate = v; };
-  api.setNoise = v => { cfg.noise = v; };
+  // Усиление меняется на лету. Плавающий шум живёт в уже усиленных dB, поэтому сдвигаем его на ту же разницу.
+  api.setGain = v => { const d = v - (cfg.gain || 0); cfg.gain = v; if (gn) gn.gain.value = Math.pow(10, v / 20); voicing.shift(d); };
   return api;
 })();
 """
@@ -2168,9 +2172,14 @@ ul.tips b{color:var(--chalk)}
   </section>
 
   <section class="card">
-    <h2>4. Шум в зале и чувствительность <span class="saved" id="saved" style="margin-left:10px">Сохранено</span></h2>
-    <button class="btn primary" id="calib" style="margin-top:0">Замерить шум в зале (3 секунды тишины)</button>
-    <div class="msg" id="calMsg">Попросите всех притихнуть и нажмите кнопку. Порог «есть голос» поднимется над шумом, поэтому разговоры не дадут ложных нот.</div>
+    <h2>4. Усиление и чувствительность <span class="saved" id="saved" style="margin-left:10px">Сохранено</span></h2>
+    <div class="slider" style="margin-top:0">
+      <div class="top2"><span>Усиление микрофона</span><span id="gainVal">+0 dB</span></div>
+      <input type="range" id="gain" min="0" max="30" step="1" value="0" aria-label="Усиление микрофона">
+      <p class="note">Двигайте вправо, пока при вашем голосе полоса уровня в пункте 2 не заходит за белую черту порога. Максимум +30 dB.</p>
+    </div>
+    <button class="btn primary" id="autoGain">Подобрать усиление (3 секунды пойте «а-а-а»)</button>
+    <div class="msg" id="gainMsg">Нажмите кнопку и пойте или говорите в микрофон обычным голосом на том расстоянии, на котором будет конкурс.</div>
     <div class="slider">
       <div class="top2"><span>Порог голоса</span><span id="gateVal">0 dB</span></div>
       <input type="range" id="gate" min="-12" max="12" step="1" value="0" aria-label="Порог голоса">
@@ -2191,7 +2200,7 @@ ul.tips b{color:var(--chalk)}
       <li><b>Микрофон близко.</b> Лучше всего 10–20 см ото рта, направленный (вокальный или петличка). Голос должен быть заметно громче зала.</li>
       <li><b>Колонки тише.</b> Музыка и аплодисменты рядом с микрофоном мешают. Экран во время забега сам молчит.</li>
       <li><b>Не дуть в микрофон.</b> Буквы «п», «б» и дыхание дают стук. Петь лучше «а-а» или «о-о», чем слова.</li>
-      <li><b>Замерьте шум.</b> Перед конкурсом нажмите кнопку из пункта 4. Если в зале стало шумнее, порог поднимается сам.</li>
+      <li><b>Подберите усиление.</b> Если голос тихий, нажмите кнопку из пункта 4 или поднимите ползунок. Порог «есть голос» поднимается над шумом зала сам.</li>
       <li><b>Отключите AGC и шумоподавление.</b> Они искажают звук и сбивают определение высоты.</li>
     </ul>
   </section>
@@ -2239,14 +2248,14 @@ Mic.onState = async () => {
   await refreshDevices();
 };
 
-/* ---------- тюнер, тренировка, замер шума ---------- */
-let lastT = performance.now(), calibrating = false, calSamples = [], drill = {target: 0, hold: 0, count: 0, until: 0};
+/* ---------- тюнер, тренировка, усиление ---------- */
+let lastT = performance.now(), fitting = false, fitSamples = [], drill = {target: 0, hold: 0, count: 0, until: 0};
 function newTarget(){ const prev = drill.target; let n; do { n = SCALE[Math.floor(Math.random() * SCALE.length)]; } while (n === prev); drill.target = n; drill.hold = 0; $('tgName').textContent = NAMES_SC[n]; }
 newTarget();
 const toPct = db => Math.max(0, Math.min(100, (db + 80) / 80 * 100));
 Mic.onFrame = f => {
   const now = performance.now(), dt = Math.min(.12, (now - lastT) / 1000); lastT = now;
-  if (calibrating) calSamples.push(f.dbfs);
+  if (fitting) fitSamples.push(f.dbfs - (+$('gain').value));      // уровень голоса до усиления
   $('lvlFill').style.width = toPct(f.dbfs) + '%';
   $('lvlGate').style.left = toPct(f.gate) + '%';
   const nm = $('nName'), nd = $('needle'), st = $('nStable');
@@ -2288,19 +2297,27 @@ $('gate').value = cfg.gate; showGate(cfg.gate);
 $('gate').oninput = () => { const v = +$('gate').value; showGate(v); Mic.setGate(v); };
 $('gate').onchange = () => { cfg = ntSave({gate: +$('gate').value}); flashSaved(); };
 
-$('calib').onclick = () => {
-  if (!Mic.running || calibrating) return;
-  calibrating = true; calSamples = []; $('calib').disabled = true;
-  const msg = $('calMsg'); msg.className = 'msg ok';
+function showGain(v){ $('gainVal').textContent = '+' + v + ' dB'; }
+$('gain').value = cfg.gain || 0; showGain(cfg.gain || 0);
+$('gain').oninput = () => { const v = +$('gain').value; showGain(v); Mic.setGain(v); };
+$('gain').onchange = () => { cfg = ntSave({gain: +$('gain').value}); flashSaved(); };
+
+/* Авто-подбор: слушаем голос 3 секунды и ставим усиление так, чтобы громкие места доходили примерно до −20 dBFS */
+$('autoGain').onclick = () => {
+  if (!Mic.running || fitting) return;
+  fitting = true; fitSamples = []; $('autoGain').disabled = true; $('gain').disabled = true;
+  const msg = $('gainMsg'); msg.className = 'msg ok';
   let left = 3;
   const step = () => {
-    if (left > 0) { msg.textContent = `Тишина… осталось ${left} с`; left--; setTimeout(step, 1000); return; }
-    calibrating = false; $('calib').disabled = false;
-    if (calSamples.length < 20) { msg.className = 'msg bad'; msg.textContent = 'Не удалось замерить: микрофон не отдаёт звук.'; return; }
-    calSamples.sort((a, b) => a - b);
-    const noise = Math.round(calSamples[Math.floor(calSamples.length * .9)]);     // 90-й процентиль: редкие щелчки не в счёт
-    cfg = ntSave({noise}); Mic.setNoise(noise); flashSaved();
-    msg.textContent = `Готово: шум в зале около ${noise} dBFS. Голос должен быть громче ${Math.max(noise + 8, -56 + cfg.gate)} dBFS: шкала выше показывает порог белой чертой.`;
+    if (left > 0) { msg.textContent = `Пойте или говорите… осталось ${left} с`; left--; setTimeout(step, 1000); return; }
+    fitting = false; $('autoGain').disabled = false; $('gain').disabled = false;
+    if (fitSamples.length < 20) { msg.className = 'msg bad'; msg.textContent = 'Не удалось подобрать: микрофон не отдаёт звук.'; return; }
+    fitSamples.sort((a, b) => a - b);
+    const peak = fitSamples[Math.floor(fitSamples.length * .95)];        // 95-й процентиль: одиночные щелчки не в счёт
+    if (peak < -80) { msg.className = 'msg bad'; msg.textContent = 'Голоса не слышно совсем. Проверьте, что выбран нужный вход, и подойдите ближе к микрофону.'; return; }
+    const g = Math.max(0, Math.min(30, Math.round(-20 - peak)));
+    $('gain').value = g; showGain(g); Mic.setGain(g); cfg = ntSave({gain: g}); flashSaved();
+    msg.textContent = g >= 30 ? 'Поставлено максимальное усиление +30 dB, а голос всё равно тихий. Поднесите микрофон ближе.' : `Готово: усиление +${g} dB. Голос теперь около −20 dBFS, это выше порога.`;
   };
   step();
 };
