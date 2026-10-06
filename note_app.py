@@ -677,7 +677,7 @@ function ranking(s){ return s.participants.map((p, i) => ({...p, i})).filter(p =
 #  1. Ноты сравниваются по названию, без октавы. Главная ошибка определения высоты (скачок на октаву)
 #     перестаёт иметь значение, а каждый голос поёт в своей октаве.
 #  2. Звук перед анализом чистится: срезаем гул ниже 80 Гц (стук по микрофону, ветер) и шипение выше 2,2 кГц.
-#  3. Порог «есть голос» плавающий: он поднимается над шумом зала, поэтому разговоры и музыка вдалеке не дают нот.
+#  3. Порог «есть голос» ручной: базовый −56 dBFS плюс сдвиг с ползунка в Setup. Сам он не меняется, шум зала настраивается там же.
 #  4. Нота засчитывается, только если высота устойчива (разброс последних замеров не больше полутона):
 #     речь и крики скользят, а пение держится.
 #  5. Короткие провалы звука (вдох, согласная) до 100 мс не обрывают ноту.
@@ -739,18 +739,14 @@ const NOTE_NAMES = ['Do','Do♯','Re','Re♯','Mi','Fa','Fa♯','Sol','Sol♯','
 
 /* Разбор по кадрам. Один объект на один микрофон. */
 function createVoicing(){
-  const st = {floor: -70, hist: [], missed: 99, last: null, tmp: {}};
-  function process(buf, sr, gateOffset, calNoise, gainDb){
+  const st = {hist: [], missed: 99, last: null, tmp: {}};
+  function process(buf, sr, gateOffset, gainDb){
     let sum = 0;
     for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
     const ms = sum / buf.length, dbfs = ms > 1e-12 ? 10 * Math.log10(ms) : -120;
-    // плавающий шум: быстро опускается, медленно поднимается. Пока слышна нота (есть высота тона), он почти не растёт:
-    // иначе долгая громкая нота сама поднимет порог выше голоса и оборвётся. Шум без высоты (зал, разговоры) поднимает его как раньше.
-    if (dbfs < st.floor) st.floor += .3 * (dbfs - st.floor); else st.floor += (st.last ? .0002 : .002) * (dbfs - st.floor);
-    st.floor = Math.max(-90, Math.min(-35 + (gainDb || 0), st.floor));
-    const noise = Math.max(st.floor, calNoise == null ? -120 : calNoise);
-    const gate = Math.max(ABS_GATE + (gateOffset || 0), noise + 8);
-    const f = {dbfs, gate, voiced: false, held: false, hz: 0, clarity: 0, midi: 0, pc: 0, stable: false, floor: st.floor};
+    // Порог ручной и не подстраивается под шум: его задают ползунком «Порог голоса» в Setup (в dBFS уже после усиления)
+    const gate = ABS_GATE + (gateOffset || 0);
+    const f = {dbfs, gate, voiced: false, held: false, hz: 0, clarity: 0, midi: 0, pc: 0, stable: false};
     let ok = false;
     if (dbfs >= gate && dbfs - (gainDb || 0) < -2) {      // верхний предел (стук, перегруз) считаем по звуку до усиления
       const r = yinDetect(buf, sr, st.tmp);
@@ -775,9 +771,8 @@ function createVoicing(){
     st.last = {midi: f.midi, pc: f.pc, stable: f.stable, hz: f.hz, clarity: f.clarity};
     return f;
   }
-  function reset(){ st.hist.length = 0; st.missed = 99; st.last = null; st.floor = -70; }
-  function shift(d){ st.floor = Math.max(-90, Math.min(0, st.floor + d)); }      // усиление изменилось: шум сдвигается вместе с ним
-  return {process, reset, shift, get floor(){ return st.floor; }};
+  function reset(){ st.hist.length = 0; st.missed = 99; st.last = null; }
+  return {process, reset};
 }
 if (typeof module !== 'undefined') module.exports = {yinDetect, createVoicing, hzToMidi, circ12, mod12, posOf, pdist, PITCH_THR};
 """
@@ -789,7 +784,7 @@ if (typeof module !== 'undefined') module.exports = {yinDetect, createVoicing, h
 # ======================================================================
 AUDIO_JS = r"""
 const NT_KEY = 'nt.settings.v1';
-const NT_DEFAULT = {deviceId: '', label: '', gate: 0, gain: 0, agc: false, ns: false, ec: false};   // gain — усиление микрофона, dB (0…30)
+const NT_DEFAULT = {deviceId: '', label: '', gate: 0, gain: 0, agc: false, ns: false, ec: false};   // gain — усиление микрофона, dB (0…50)
 function ntLoad(){
   let s = {};
   try { s = JSON.parse(localStorage.getItem(NT_KEY) || '{}') || {}; } catch (e) {}
@@ -870,7 +865,7 @@ const Mic = (() => {
     if (t - lastMeasure < 15) return;           // отстающие тики не копим: лучше пропустить замер, чем отстать от голоса
     lastMeasure = t;
     an.getFloatTimeDomainData(buf);
-    const f = voicing.process(buf, ctx.sampleRate, cfg.gate, null, cfg.gain || 0);
+    const f = voicing.process(buf, ctx.sampleRate, cfg.gate, cfg.gain || 0);
     api.frame = f;
     api.onFrame && api.onFrame(f);
   }
@@ -897,10 +892,10 @@ const Mic = (() => {
     const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 80; hp.Q.value = .7;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200; lp.Q.value = .7;
     an = ctx.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0;
-    // Усиление микрофона (0…+30 dB): ставим первым, до фильтров, чтобы тихий голос дотянулся до порога «есть голос»
+    // Усиление микрофона (0…+50 dB): ставим первым, до фильтров, чтобы тихий голос дотянулся до порога «есть голос»
     gn = ctx.createGain(); gn.gain.value = Math.pow(10, (cfg.gain || 0) / 20);
     ctx.createMediaStreamSource(s).connect(gn); gn.connect(hp); hp.connect(lp); lp.connect(an);
-    buf = new Float32Array(an.fftSize); voicing.reset(); voicing.shift(cfg.gain || 0);
+    buf = new Float32Array(an.fftSize); voicing.reset();
     startTimer();     // таймер, а не кадры: разбор не зависит от того, видна ли вкладка
     api.running = true; fire(); return true;
   };
@@ -911,8 +906,8 @@ const Mic = (() => {
   };
   api.reload = () => { cfg = ntLoad(); };
   api.setGate = v => { cfg.gate = v; };
-  // Усиление меняется на лету. Плавающий шум живёт в уже усиленных dB, поэтому сдвигаем его на ту же разницу.
-  api.setGain = v => { const d = v - (cfg.gain || 0); cfg.gain = v; if (gn) gn.gain.value = Math.pow(10, v / 20); voicing.shift(d); };
+  // Усиление меняется на лету
+  api.setGain = v => { cfg.gain = v; if (gn) gn.gain.value = Math.pow(10, v / 20); };
   return api;
 })();
 """
@@ -2176,15 +2171,13 @@ ul.tips b{color:var(--chalk)}
     <h2>4. Усиление и чувствительность <span class="saved" id="saved" style="margin-left:10px">Сохранено</span></h2>
     <div class="slider" style="margin-top:0">
       <div class="top2"><span>Усиление микрофона</span><span id="gainVal">+0 dB</span></div>
-      <input type="range" id="gain" min="0" max="30" step="1" value="0" aria-label="Усиление микрофона">
-      <p class="note">Двигайте вправо, пока при вашем голосе полоса уровня в пункте 2 не заходит за белую черту порога. Максимум +30 dB.</p>
+      <input type="range" id="gain" min="0" max="50" step="1" value="0" aria-label="Усиление микрофона">
+      <p class="note">Двигайте вправо, пока при вашем голосе полоса уровня в пункте 2 не заходит за белую черту порога. Максимум +50 dB.</p>
     </div>
-    <button class="btn primary" id="autoGain">Подобрать усиление (3 секунды пойте «а-а-а»)</button>
-    <div class="msg" id="gainMsg">Нажмите кнопку и пойте или говорите в микрофон обычным голосом на том расстоянии, на котором будет конкурс.</div>
     <div class="slider">
       <div class="top2"><span>Порог голоса</span><span id="gateVal">0 dB</span></div>
-      <input type="range" id="gate" min="-12" max="12" step="1" value="0" aria-label="Порог голоса">
-      <p class="note">Голос тихий и обрывается: сдвиньте влево. Ловятся посторонние звуки: сдвиньте вправо.</p>
+      <input type="range" id="gate" min="-20" max="30" step="1" value="0" aria-label="Порог голоса">
+      <p class="note">Порог сам не меняется, выставьте его вручную. Голос тихий и обрывается: сдвиньте влево. Ловятся посторонние звуки: сдвиньте вправо, пока белая черта на шкале не окажется выше шума, но ниже голоса.</p>
     </div>
   </section>
 
@@ -2201,7 +2194,7 @@ ul.tips b{color:var(--chalk)}
       <li><b>Микрофон близко.</b> Лучше всего 10–20 см ото рта, направленный (вокальный или петличка). Голос должен быть заметно громче зала.</li>
       <li><b>Колонки тише.</b> Музыка и аплодисменты рядом с микрофоном мешают. Экран во время забега сам молчит.</li>
       <li><b>Не дуть в микрофон.</b> Буквы «п», «б» и дыхание дают стук. Петь лучше «а-а» или «о-о», чем слова.</li>
-      <li><b>Подберите усиление.</b> Если голос тихий, нажмите кнопку из пункта 4 или поднимите ползунок. Порог «есть голос» поднимается над шумом зала сам.</li>
+      <li><b>Подберите усиление и порог.</b> Если голос тихий, поднимите усиление в пункте 4. Если ловятся посторонние звуки, поднимите порог голоса: сам он под шум зала не подстраивается.</li>
       <li><b>Отключите AGC и шумоподавление.</b> Они искажают звук и сбивают определение высоты.</li>
     </ul>
   </section>
@@ -2250,13 +2243,12 @@ Mic.onState = async () => {
 };
 
 /* ---------- тюнер, тренировка, усиление ---------- */
-let lastT = performance.now(), fitting = false, fitSamples = [], drill = {target: 0, hold: 0, count: 0, until: 0};
+let lastT = performance.now(), drill = {target: 0, hold: 0, count: 0, until: 0};
 function newTarget(){ const prev = drill.target; let n; do { n = SCALE[Math.floor(Math.random() * SCALE.length)]; } while (n === prev); drill.target = n; drill.hold = 0; $('tgName').textContent = NAMES_SC[n]; }
 newTarget();
 const toPct = db => Math.max(0, Math.min(100, (db + 80) / 80 * 100));
 Mic.onFrame = f => {
   const now = performance.now(), dt = Math.min(.12, (now - lastT) / 1000); lastT = now;
-  if (fitting) fitSamples.push(f.dbfs - (+$('gain').value));      // уровень голоса до усиления
   $('lvlFill').style.width = toPct(f.dbfs) + '%';
   $('lvlGate').style.left = toPct(f.gate) + '%';
   const nm = $('nName'), nd = $('needle'), st = $('nStable');
@@ -2302,26 +2294,6 @@ function showGain(v){ $('gainVal').textContent = '+' + v + ' dB'; }
 $('gain').value = cfg.gain || 0; showGain(cfg.gain || 0);
 $('gain').oninput = () => { const v = +$('gain').value; showGain(v); Mic.setGain(v); };
 $('gain').onchange = () => { cfg = ntSave({gain: +$('gain').value}); flashSaved(); };
-
-/* Авто-подбор: слушаем голос 3 секунды и ставим усиление так, чтобы громкие места доходили примерно до −20 dBFS */
-$('autoGain').onclick = () => {
-  if (!Mic.running || fitting) return;
-  fitting = true; fitSamples = []; $('autoGain').disabled = true; $('gain').disabled = true;
-  const msg = $('gainMsg'); msg.className = 'msg ok';
-  let left = 3;
-  const step = () => {
-    if (left > 0) { msg.textContent = `Пойте или говорите… осталось ${left} с`; left--; setTimeout(step, 1000); return; }
-    fitting = false; $('autoGain').disabled = false; $('gain').disabled = false;
-    if (fitSamples.length < 20) { msg.className = 'msg bad'; msg.textContent = 'Не удалось подобрать: микрофон не отдаёт звук.'; return; }
-    fitSamples.sort((a, b) => a - b);
-    const peak = fitSamples[Math.floor(fitSamples.length * .95)];        // 95-й процентиль: одиночные щелчки не в счёт
-    if (peak < -80) { msg.className = 'msg bad'; msg.textContent = 'Голоса не слышно совсем. Проверьте, что выбран нужный вход, и подойдите ближе к микрофону.'; return; }
-    const g = Math.max(0, Math.min(30, Math.round(-20 - peak)));
-    $('gain').value = g; showGain(g); Mic.setGain(g); cfg = ntSave({gain: g}); flashSaved();
-    msg.textContent = g >= 30 ? 'Поставлено максимальное усиление +30 dB, а голос всё равно тихий. Поднесите микрофон ближе.' : `Готово: усиление +${g} dB. Голос теперь около −20 dBFS, это выше порога.`;
-  };
-  step();
-};
 
 Mic.start().then(() => refreshDevices());
 </script></body></html>"""
