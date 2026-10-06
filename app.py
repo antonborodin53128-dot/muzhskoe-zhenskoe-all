@@ -108,7 +108,7 @@ iframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#040b08
 .start p{color:#81958b;max-width:32em;margin:18px auto 0;text-align:center;line-height:1.45}.start p.w{color:#e8b24a}</style></head><body>
 <div class="wait" id="wait"><div class="glow"></div><div class="beam g a"></div><div class="beam g b"></div><div class="beam p a"></div><div class="beam p b"></div><div class="corner g"></div><div class="corner p"></div><div><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="sl">/</span> <span class="f">ЖЕНСКОЕ</span></div></div></div>
 <iframe id="fr" title="Гостевой экран" allow="autoplay; microphone; fullscreen" hidden></iframe>
-<div class="start" id="start"><div style="text-align:center"><div><button id="go" type="button">Включить</button></div><p id="hint" hidden></p></div></div>
+<div class="start" id="start"><div style="text-align:center"><div><button id="go" type="button">Включить звук</button></div><p id="hint" hidden></p></div></div>
 <script>
 (function(){var fr=document.getElementById('fr'),wait=document.getElementById('wait'),cur='',AC=null;
 function unlock(){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();AC.resume();var b=AC.createBuffer(1,1,22050),s=AC.createBufferSource();s.buffer=b;s.connect(AC.destination);s.start(0)}catch(e){}}
@@ -130,7 +130,7 @@ document.getElementById('go').addEventListener('click',async function(){
  var ok=await mic();
  if(!ok){var h=document.getElementById('hint');h.hidden=false;h.className='w';h.textContent='Доступ к микрофону не получен. Конкурсы «Voice meter» и «Точно в ноту» без него не заработают: разрешите микрофон в настройках сайта (значок замка в адресной строке) и обновите страницу. Остальные конкурсы можно запускать.';btn.disabled=false;btn.textContent='Продолжить без микрофона';failed=true;return}
  go()});
-try{if(localStorage.getItem('gs_started')){document.getElementById('go').textContent='Продолжить'}}catch(e){}
+try{if(localStorage.getItem('gs_started')){document.getElementById('go').textContent='Включить звук'}}catch(e){}
 var failed=false;function go(){try{localStorage.setItem('gs_started','1')}catch(e){}document.getElementById('start').style.display='none';unlock();poll();setInterval(poll,1000)}
 })();
 </script></body></html>"""
