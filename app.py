@@ -17,7 +17,7 @@ app=Flask(__name__)
 
 CSS="""
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 12% 45%,#082519 0,#040b08 38%,#030505 72%);color:#f5f6f2;font-family:Arial,sans-serif}
-.wrap{max-width:1180px;margin:auto;padding:34px 28px 70px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:54px}
+.wrap{max-width:1180px;margin:auto;padding:34px 28px 70px}.top{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;margin-bottom:54px}
 .logo{font-size:28px;font-weight:900}.m{border:2px solid #20ee78;padding:8px 12px}.slash{color:#20ee78}.fword{color:#ff4fa3}
 h1{font-size:52px;margin:0 0 42px}.section{margin:42px 0}.title{font-size:22px;font-weight:900;margin-bottom:16px;color:#20ee78}.title.f{color:#ff4fa3}.title.mix{color:#eee}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:17px}.card{height:165px;border:1px solid #1c5c3a;border-radius:20px;background:#06150e;display:flex;align-items:center;justify-content:center;text-align:center;text-decoration:none;color:#fff;font-size:29px;font-weight:900;transition:.15s;box-shadow:inset 0 0 35px rgba(32,238,120,.02)}
@@ -29,8 +29,8 @@ h1{font-size:52px;margin:0 0 42px}.section{margin:42px 0}.title{font-size:22px;f
 .launch{margin-top:26px}.launch button{width:100%;padding:22px;border:2px solid #2bf08a;border-radius:17px;background:#07170f;color:#2bf08a;font:900 19px Arial,sans-serif;cursor:pointer}.launch button.done{background:#2bf08a;color:#02140a}.launch button:disabled{opacity:.6}.launchhint{margin-top:10px;text-align:center;font-size:13px;color:#82968c}.launchhint.warn{color:#e8b24a}
 .qrbox{margin-top:24px;padding:22px;border:1px solid #20543a;border-radius:17px;background:#07170f;display:flex;align-items:center;gap:22px}
 .qrbox img{width:150px;height:150px;background:#fff;padding:8px;border-radius:12px}.qrtitle{font-size:19px;font-weight:900}.qrhint{font-size:13px;color:#82968c;margin-top:7px;line-height:1.4}
-.toplinks{display:flex;gap:22px;align-items:center}.splashcard{font:inherit;color:inherit;cursor:pointer;font-size:inherit;border:1px solid #51404d}.splashcard.done{border-color:#2bf08a;box-shadow:0 0 25px rgba(43,240,138,.18)}.splashhint{align-self:center;color:#82968c;font-size:14px;line-height:1.4;grid-column:span 2}.splashhint.warn{color:#e8b24a}
-.qrlink{color:#9db0a5;font-size:15px;font-weight:700;text-decoration:underline;text-underline-offset:4px;white-space:nowrap}.qrlink:hover{color:#fff}
+.toplinks{min-width:0;display:flex;gap:6px 22px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.splashcard{font:inherit;color:inherit;cursor:pointer;font-size:inherit;border:1px solid #51404d}.splashcard.done{border-color:#2bf08a;box-shadow:0 0 25px rgba(43,240,138,.18)}.splashhint{align-self:center;color:#82968c;font-size:14px;line-height:1.4;grid-column:span 2}.splashhint.warn{color:#e8b24a}
+.qrlink{color:#9db0a5;font-size:15px;font-weight:700;text-decoration:underline;text-underline-offset:4px}.qrlink:hover{color:#fff}
 .qrov{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,6,5,.8);backdrop-filter:blur(6px)}.qrov.on{display:flex}
 .qrmodal{width:min(360px,100%);text-align:center;padding:24px;border:1px solid #20543a;border-radius:20px;background:#07170f}.qrmodal img{display:block;width:240px;max-width:100%;height:auto;margin:16px auto;background:#fff;padding:10px;border-radius:14px}
 .qrmodal button{margin-top:18px;width:100%;padding:13px;border:1px solid #3c4b43;border-radius:12px;background:none;color:#fff;font:700 16px Arial,sans-serif;cursor:pointer}
@@ -40,7 +40,7 @@ h1{font-size:52px;margin:0 0 42px}.section{margin:42px 0}.title{font-size:22px;f
 """
 HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Мужское / Женское</title><style>{{css}}</style></head><body><div class="wrap">
 <div class="top"><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="slash">/</span> <span class="fword">ЖЕНСКОЕ</span></div>
-<div class="toplinks"><a class="qrlink" href="/screen" target="_blank" rel="noopener">Гостевой экран</a><a class="qrlink" id="qrOpen" href="#" role="button">QR для ведущего</a></div></div>
+<div class="toplinks"><a class="qrlink" href="/screen" target="_blank" rel="noopener">Гостевой экран</a><a class="qrlink" id="splashBtn" href="#" role="button">Вывести заставку на гостевой экран</a><a class="qrlink" id="qrOpen" href="#" role="button">QR для ведущего</a></div></div>
 <h1>КОНКУРСЫ</h1>
 <div class="section"><div class="title">МУЖСКОЕ</div><div class="grid">
 <a class="card" href="/contest/voice">VOICE METER</a><a class="card" href="/contest/balls">ШАРИКИ</a><a class="card" href="/contest/hamster">ХОМЯК</a>
@@ -48,7 +48,7 @@ HOME="""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="v
 <div class="section"><div class="title f">ЖЕНСКОЕ</div><div class="grid">
 <a class="card f" href="/contest/note">ТОЧНО В НОТУ</a><a class="card f" href="/contest/kolcebros">КОЛЬЦЕБРОС</a><a class="card f" href="/contest/diktant">ДИКТАНТ</a>
 </div></div>
-<div class="section"><div class="title mix">ГОСТЕВОЙ ЭКРАН</div><div class="grid"><button type="button" class="card mix splashcard" id="splashBtn">Вывести заставку на гостевой экран</button><div class="splashhint" id="splashHint"></div></div></div>
+</div>
 <div class="section"><div class="title mix">МУЖЧИНА VS ЖЕНЩИНА</div><div class="grid"><a class="card mix" href="/contest/final">ФИНАЛ</a></div></div>
 </div>
 <div class="qrov" id="qrOv"><div class="qrmodal"><div class="qrtitle">QR ДЛЯ ВЕДУЩЕГО</div><img src="{{qr}}" alt="QR для ведущего"><div class="qrhint">Отсканируйте телефоном, чтобы открыть эту страницу с конкурсами</div><button type="button" id="qrClose">Закрыть</button></div></div>
@@ -57,11 +57,10 @@ document.getElementById('qrOpen').addEventListener('click',function(e){e.prevent
 document.getElementById('qrClose').addEventListener('click',function(){s(false)});
 o.addEventListener('click',function(e){if(e.target===o)s(false)});
 addEventListener('keydown',function(e){if(e.key==='Escape')s(false)});})();</script>
-<script>(function(){var b=document.getElementById('splashBtn'),h=document.getElementById('splashHint');
-function paint(a){var on=!a.key;b.classList.toggle('done',on&&a.screen_online);b.textContent=on&&a.screen_online?'✓ Заставка на гостевом экране':'Вывести заставку на гостевой экран';
- h.textContent=a.screen_online?(on?'':'Сейчас на гостевом экране идёт конкурс.'):'Гостевой экран не открыт. Откройте его по ссылке «Гостевой экран» вверху.';h.className='splashhint'+(a.screen_online?'':' warn')}
+<script>(function(){var b=document.getElementById('splashBtn');
+function paint(a){var on=!a.key&&a.screen_online;b.textContent=on?'✓ Заставка выведена':'Вывести заставку на гостевой экран';b.title=a.screen_online?'':'Гостевой экран не открыт'}
 function load(){fetch('/api/active',{cache:'no-store'}).then(function(r){return r.json()}).then(paint).catch(function(){})}
-b.addEventListener('click',function(){b.disabled=true;fetch('/api/launch/splash',{method:'POST'}).then(function(){b.disabled=false;load()}).catch(function(){b.disabled=false})});
+b.addEventListener('click',function(e){e.preventDefault();fetch('/api/launch/splash',{method:'POST'}).then(load).catch(function(){})});
 load();setInterval(load,3000)})();</script>
 </body></html>"""
 
