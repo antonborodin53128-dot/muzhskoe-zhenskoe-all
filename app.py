@@ -142,6 +142,7 @@ HAMSTER_KEYS = r"""<script>(function(){addEventListener('keydown',function(e){
 if(e.repeat||e.ctrlKey||e.metaKey||e.altKey)return;var t=e.target;
 if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))return;
 var m=/^Key([A-Z])$/.exec(e.code);if(!m)return;
+try{var f=document.getElementById('fr'),w=f&&!f.hidden&&f.contentWindow;if(w&&typeof w.pressKey==='function'){w.pressKey(m[1]);return}}catch(x){}
 fetch('/men/hamster/api/key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({letter:m[1]}),keepalive:true}).catch(function(){})})})();</script>"""
 HOME=HOME.replace("</body></html>",HAMSTER_KEYS+"</body></html>")
 MENU=MENU.replace("</body></html>",HAMSTER_KEYS+"</body></html>")
