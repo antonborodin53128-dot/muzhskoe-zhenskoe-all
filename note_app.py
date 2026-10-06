@@ -744,8 +744,9 @@ function createVoicing(){
     let sum = 0;
     for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
     const ms = sum / buf.length, dbfs = ms > 1e-12 ? 10 * Math.log10(ms) : -120;
-    // плавающий шум: быстро опускается, медленно поднимается (длинная нота не поднимет его до уровня голоса)
-    if (dbfs < st.floor) st.floor += .3 * (dbfs - st.floor); else st.floor += .002 * (dbfs - st.floor);
+    // плавающий шум: быстро опускается, медленно поднимается. Пока слышна нота (есть высота тона), он почти не растёт:
+    // иначе долгая громкая нота сама поднимет порог выше голоса и оборвётся. Шум без высоты (зал, разговоры) поднимает его как раньше.
+    if (dbfs < st.floor) st.floor += .3 * (dbfs - st.floor); else st.floor += (st.last ? .0002 : .002) * (dbfs - st.floor);
     st.floor = Math.max(-90, Math.min(-35 + (gainDb || 0), st.floor));
     const noise = Math.max(st.floor, calNoise == null ? -120 : calNoise);
     const gate = Math.max(ABS_GATE + (gateOffset || 0), noise + 8);
