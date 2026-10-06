@@ -89,10 +89,10 @@ iframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#040b08
 .beam::before{content:'';position:absolute;inset:0;clip-path:polygon(44% 100%,56% 100%,100% 0,0 0)}
 .beam.g{left:-6vw;transform-origin:50% 100%;--c:32,238,120}.beam.p{right:-6vw;transform-origin:50% 100%;--c:255,79,163}
 .beam::before{background:linear-gradient(to top,rgba(var(--c),.95),rgba(var(--c),.28) 55%,rgba(var(--c),0))}
-.corner{position:absolute;top:-22vmax;width:55vmax;height:55vmax;border-radius:50%;pointer-events:none;transform-origin:50% 50%}
-.corner.g{left:-22vmax;background:radial-gradient(circle,rgba(32,238,120,.5),rgba(32,238,120,.18) 40%,transparent 70%);animation:cpulse 9s ease-in-out infinite}
-.corner.p{right:-22vmax;background:radial-gradient(circle,rgba(255,79,163,.48),rgba(255,79,163,.17) 40%,transparent 70%);animation:cpulse 11s ease-in-out infinite reverse}
-@keyframes cpulse{0%,100%{transform:scale(.85)}50%{transform:scale(1.15)}}
+.corner{position:absolute;top:-34vh;width:90vw;height:78vh;border-radius:50%;pointer-events:none}
+.corner.g{left:-26vw;transform-origin:30% 50%;background:radial-gradient(ellipse at center,rgba(32,238,120,.36),rgba(32,238,120,.13) 42%,transparent 70%);animation:cpulse 10s ease-in-out infinite}
+.corner.p{right:-26vw;transform-origin:70% 50%;background:radial-gradient(ellipse at center,rgba(255,79,163,.34),rgba(255,79,163,.12) 42%,transparent 70%);animation:cpulse 10s ease-in-out -5s infinite}
+@keyframes cpulse{0%,100%{transform:scale(.7);opacity:.55}50%{transform:scale(1.2);opacity:1}}
 .beam.g.a{animation:swgA 17s ease-in-out infinite}.beam.g.b{animation:swgB 24s ease-in-out infinite;opacity:.4}
 .beam.p.a{animation:swpA 19s ease-in-out infinite}.beam.p.b{animation:swpB 26s ease-in-out infinite;opacity:.4}
 @keyframes swgA{0%,100%{transform:rotate(8deg)}50%{transform:rotate(52deg)}}
