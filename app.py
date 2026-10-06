@@ -85,12 +85,17 @@ SCREEN_SHELL = r"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><m
 iframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#040b08}
 .wait{position:fixed;inset:0;display:grid;place-items:center;text-align:center;overflow:hidden;background:#030606}
 .wait .glow{position:absolute;inset:0;background:radial-gradient(ellipse 75% 120% at -8% 50%,rgba(32,238,120,.30),rgba(32,238,120,.10) 45%,transparent 75%),radial-gradient(ellipse 75% 120% at 108% 50%,rgba(255,79,163,.28),rgba(255,79,163,.09) 45%,transparent 75%)}
-.beam{position:absolute;bottom:-12vh;width:34vw;height:135vh;opacity:.5;mix-blend-mode:screen;pointer-events:none}
+.beam{position:absolute;bottom:-12vh;width:34vw;height:135vh;opacity:.5;filter:blur(3px);mix-blend-mode:screen;pointer-events:none}
 .beam::before{content:'';position:absolute;inset:0;clip-path:polygon(44% 100%,56% 100%,100% 0,0 0)}
 .beam.g{left:-6vw;transform-origin:50% 100%;--c:32,238,120}.beam.p{right:-6vw;transform-origin:50% 100%;--c:255,79,163}
 .beam::before{background:linear-gradient(to top,rgba(var(--c),.95),rgba(var(--c),.28) 55%,rgba(var(--c),0))}
-.beam.g.a{animation:swgA 9s ease-in-out infinite}.beam.g.b{animation:swgB 13s ease-in-out infinite;opacity:.4}
-.beam.p.a{animation:swpA 10s ease-in-out infinite}.beam.p.b{animation:swpB 14s ease-in-out infinite;opacity:.4}
+.beam.t{bottom:auto;top:-12vh;transform-origin:50% 0;width:28vw;height:120vh;opacity:.4}
+.beam.t::before{clip-path:polygon(44% 0,56% 0,100% 100%,0 100%);background:linear-gradient(to bottom,rgba(var(--c),.9),rgba(var(--c),.25) 55%,rgba(var(--c),0))}
+.beam.g.t{left:4vw;animation:swtg 21s ease-in-out infinite}.beam.p.t{right:4vw;animation:swtp 23s ease-in-out infinite}
+@keyframes swtg{0%,100%{transform:rotate(18deg)}50%{transform:rotate(-14deg)}}
+@keyframes swtp{0%,100%{transform:rotate(-18deg)}50%{transform:rotate(14deg)}}
+.beam.g.a{animation:swgA 17s ease-in-out infinite}.beam.g.b{animation:swgB 24s ease-in-out infinite;opacity:.4}
+.beam.p.a{animation:swpA 19s ease-in-out infinite}.beam.p.b{animation:swpB 26s ease-in-out infinite;opacity:.4}
 @keyframes swgA{0%,100%{transform:rotate(8deg)}50%{transform:rotate(52deg)}}
 @keyframes swgB{0%,100%{transform:rotate(60deg)}50%{transform:rotate(16deg)}}
 @keyframes swpA{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(-52deg)}}
@@ -102,7 +107,7 @@ iframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#040b08
 .start{position:fixed;inset:0;z-index:5;display:grid;place-items:start center;padding-top:60vh}
 .start button{border:0;border-radius:999px;padding:.7em 1.6em;font:800 min(3vw,38px) Arial,sans-serif;background:linear-gradient(100deg,#2bf08a,#ff4fa3);color:#10120f;cursor:pointer}
 .start p{color:#81958b;max-width:32em;margin:18px auto 0;text-align:center;line-height:1.45}.start p.w{color:#e8b24a}</style></head><body>
-<div class="wait" id="wait"><div class="glow"></div><div class="beam g a"></div><div class="beam g b"></div><div class="beam p a"></div><div class="beam p b"></div><div><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="sl">/</span> <span class="f">ЖЕНСКОЕ</span></div></div></div>
+<div class="wait" id="wait"><div class="glow"></div><div class="beam g a"></div><div class="beam g b"></div><div class="beam p a"></div><div class="beam p b"></div><div class="beam g t"></div><div class="beam p t"></div><div><div class="logo"><span class="m">МУЖСКОЕ</span> <span class="sl">/</span> <span class="f">ЖЕНСКОЕ</span></div></div></div>
 <iframe id="fr" title="Гостевой экран" allow="autoplay; microphone; fullscreen" hidden></iframe>
 <div class="start" id="start"><div style="text-align:center"><div><button id="go" type="button">Включить</button></div><p id="hint" hidden></p></div></div>
 <script>
