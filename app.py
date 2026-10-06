@@ -140,6 +140,8 @@ var failed=false;function go(){try{localStorage.setItem('gs_started','1')}catch(
 HAMSTER_KEYS = r"""<script>(function(){var q=Promise.resolve();   // нажатия уходят строго по очереди, чтобы не перепутались по дороге
 addEventListener('keydown',function(e){
 if(e.repeat||e.ctrlKey||e.metaKey||e.altKey)return;var t=e.target;
+if(e.code==='F2'){try{var g=document.getElementById('fr'),v=g&&!g.hidden&&g.contentWindow;if(v&&v.Diag){e.preventDefault();v.Diag.toggle()}}catch(x){}return}   // F2 — диагностика Хомяка во фрейме
+
 if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))return;
 var m=/^Key([A-Z])$/.exec(e.code);if(!m)return;
 try{var f=document.getElementById('fr'),w=f&&!f.hidden&&f.contentWindow;if(w&&typeof w.pressKey==='function'){w.pressKey(m[1]);return}}catch(x){}
