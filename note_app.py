@@ -1522,6 +1522,7 @@ body[data-view=game] .head{display:none}
 /* кнопка «включить звук и микрофон» и состояние микрофона */
 .sound{position:fixed;right:20px;bottom:20px;z-index:50;border:1px solid var(--line);background:rgba(38,16,31,.92);color:var(--chalk);border-radius:999px;padding:12px 20px;font-weight:600;font-size:16px;cursor:pointer;transition:opacity .4s}
 .sound:hover{border-color:var(--signal)}
+.sound:not(.off){animation:sndlate .4s ease 2.5s both}@keyframes sndlate{from{opacity:0}to{opacity:1}}
 .sound.off{opacity:0;pointer-events:none}
 .micchip{position:fixed;left:20px;bottom:16px;z-index:50;max-width:min(60vw,560px);display:flex;align-items:center;gap:.6em;border:0;background:none;color:var(--mist);font:600 clamp(12px,1vw,16px)/1.2 var(--ui);padding:6px 4px;opacity:.55;transition:opacity .3s;text-decoration:none}
 .micchip:hover{opacity:1}

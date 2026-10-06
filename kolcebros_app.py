@@ -742,6 +742,7 @@ body{background:radial-gradient(60% 70% at 50% 55%,var(--signal-soft),transparen
 /* кнопка звука */
 .sound{position:fixed;right:20px;bottom:20px;z-index:50;border:1px solid var(--line);background:rgba(38,16,31,.9);color:var(--chalk);border-radius:999px;padding:12px 20px;font-weight:600;font-size:16px;cursor:pointer;transition:opacity .4s}
 .sound:hover{border-color:var(--signal)}
+.sound:not(.off){animation:sndlate .4s ease 2.5s both}@keyframes sndlate{from{opacity:0}to{opacity:1}}
 .sound.off{opacity:0;pointer-events:none}
 .who{font-family:var(--display);font-weight:800;font-size:clamp(32px,4.2vw,80px);line-height:1}
 .count{font-size:min(27vw,42vh);line-height:1;color:var(--signal);margin:1.5vh 0 0;filter:drop-shadow(0 0 40px var(--signal-soft))}

@@ -1171,6 +1171,7 @@ body{overflow:hidden;background:radial-gradient(60% 70% at 50% 55%,var(--signal-
 .overlay{position:fixed;inset:0;z-index:20;background:rgba(20,7,16,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4vh 4vw}
 .sound{position:fixed;right:20px;bottom:20px;z-index:50;border:1px solid var(--line);background:rgba(38,16,31,.92);color:var(--chalk);border-radius:999px;padding:12px 20px;font-weight:600;font-size:16px}
 .sound:hover{border-color:var(--signal)}
+.sound:not(.off){animation:sndlate .4s ease 2.5s both}@keyframes sndlate{from{opacity:0}to{opacity:1}}
 </style></head>
 <body>
 <div class="offline" id="offline">Нет связи с сервером — переподключаюсь…</div>
