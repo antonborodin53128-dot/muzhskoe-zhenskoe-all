@@ -144,7 +144,7 @@ if(e.code==='F2'){try{var g=document.getElementById('fr'),v=g&&!g.hidden&&g.cont
 
 if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))return;
 var m=/^Key([A-Z])$/.exec(e.code);if(!m)return;
-try{var f=document.getElementById('fr'),w=f&&!f.hidden&&f.contentWindow;if(w&&typeof w.pressKey==='function'){w.pressKey(m[1]);return}}catch(x){}
+try{var f=document.getElementById('fr'),w=f&&!f.hidden&&f.contentWindow;if(w&&typeof w.pressKey==='function'&&w.pressKey(m[1]))return}catch(x){}   // Хомяк во фрейме засчитал сам; иначе — запросом на сервер
 var body=JSON.stringify({letter:m[1]});
 q=q.then(function(){return fetch('/men/hamster/api/key',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true})}).catch(function(){})})})();</script>"""
 HOME=HOME.replace("</body></html>",HAMSTER_KEYS+"</body></html>")
