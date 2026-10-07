@@ -146,7 +146,6 @@ addEventListener('keydown',function(e){
 if(e.ctrlKey||e.metaKey||e.altKey||e.isComposing)return;var t=e.target;
 if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))return;
 var w=frameWin(),p=w?w.location.pathname:'';
-if(e.code==='F2'){if(w&&w.Diag){e.preventDefault();w.Diag.toggle()}return}   // F2 — диагностика Хомяка во фрейме
 if(p.indexOf('/women/diktant/')===0){   // Диктант во фрейме: клавишу — ему, как будто нажали прямо в нём (со звуком)
  if(e.code==='Backspace'||e.code==='Enter'||e.code==='Space'||e.code==='Quote'||e.code==='Slash')e.preventDefault();
  try{w.dispatchEvent(new w.KeyboardEvent('keydown',{key:e.key,code:e.code,repeat:e.repeat,bubbles:true,cancelable:true}))}catch(x){}
